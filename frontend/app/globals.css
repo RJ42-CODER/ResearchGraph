@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #09090b;
+  color: #f4f4f5;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.react-flow__controls button {
+  background-color: #18181b !important;
+  border-bottom: 1px solid #27272a !important;
+  fill: #f4f4f5 !important;
+}
+.react-flow__controls button:hover {
+  background-color: #27272a !important;
+}
