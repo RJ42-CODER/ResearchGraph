@@ -1,0 +1,26 @@
+# Python & Virtual Environments
+venv/
+backend/venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Node & Next.js
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Local Storage & Database
+data/
+backend/data/
+*.db
+chroma_db/
+uploads/
+
+# Environment & OS files
+.env
+.env.local
+.DS_Store
+Thumbs.db
