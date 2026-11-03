@@ -79,3 +79,88 @@ Pull the local models:
 ollama pull llama3.2:3b
 ollama pull nomic-embed-text
 ```
+
+---
+
+## 🤝 Contributing & Running the Project Locally
+
+We welcome community contributions, bug reports, and pull requests! Whether you want to add support for new models, improve vector retrieval strategies, or enhance the React Flow UI, follow these steps to set up your environment:
+
+### 1. Fork & Clone the Repository
+
+```bash
+git clone [https://github.com/](https://github.com/)<your-username>/ResearchGraph.git
+cd ResearchGraph
+```
+
+### 2. Configure Local Models
+
+Ensure [Ollama](https://ollama.com/) is running in the background, then pull the required models:
+
+```bash
+ollama pull llama3.2:3b
+ollama pull nomic-embed-text
+```
+
+### 3. Backend Setup & Run
+
+Open a terminal in the project root:
+
+```bash
+cd backend
+python -m venv venv
+
+# Activate Virtual Environment
+# Windows (PowerShell):
+.\venv\Scripts\activate
+# Linux / macOS:
+# source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start backend server with auto-reload
+uvicorn app.main:app --reload --port 8000
+```
+
+- The API documentation will be live at `http://localhost:8000/docs`.
+
+### 4. Frontend Setup & Run
+
+Open a second terminal window:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+- Open `http://localhost:3000` to interact with the workspace canvas.
+
+---
+
+## 🛠️ Areas to Contribute
+
+- **Agent Extensions:** Add new LangGraph nodes in `backend/app/agents/pipeline.py` (e.g., automated ablation study synthesizers, memory summarization).
+- **Model Support:** Extend LLM orchestration beyond Ollama to support local vLLM or Hugging Face Transformers.
+- **Canvas Features:** Add custom React Flow node shapes, export graph layout to JSON/Mermaid, or add zoom-to-fit controls in `frontend/app/page.tsx`.
+- **Sandbox Security:** Add resource limits (cgroups/Docker execution wrappers) in `backend/app/sandbox/runner.py`.
+
+---
+
+## 📝 Contribution Workflow
+
+1. **Fork** the project on GitHub.
+2. **Create a branch** for your feature or fix:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. **Commit your changes** with clear messages:
+   ```bash
+   git commit -m "feat: add support for custom prompt templates"
+   ```
+4. **Push to your fork**:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+5. Open a **Pull Request** explaining your changes and linking any relevant issues.
