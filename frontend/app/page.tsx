@@ -31,8 +31,8 @@ import {
   Send,
   X,
   Plus,
-  Bell,
   CheckCircle2,
+  Edit3,
 } from "lucide-react";
 
 const BACKEND_URL = "http://localhost:8000";
@@ -47,9 +47,16 @@ function WorkspaceCanvas() {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounter = useRef(0);
 
-  // Drawer Resizable Width State (default 380px, clamped between 300px and 850px)
+  // Resizable Drawer Width State (default 380px, clamped between 300px and 850px)
   const [drawerWidth, setDrawerWidth] = useState(380);
   const isResizing = useRef(false);
+
+  // Edit Node Title State
+  const [editingNode, setEditingNode] = useState<{
+    id: string;
+    currentTitle: string;
+  } | null>(null);
+  const [newTitleInput, setNewTitleInput] = useState("");
 
   const startResizing = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -101,10 +108,8 @@ function WorkspaceCanvas() {
   const [isAgentThinking, setIsAgentThinking] = useState(false);
   const [hasUnreadNotification, setHasUnreadNotification] = useState(false);
 
-  // Close context menu on canvas click
   const onPaneClick = useCallback(() => setMenu(null), []);
 
-  // Context Menu on Right-Click
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault();
@@ -118,6 +123,15 @@ function WorkspaceCanvas() {
     [],
   );
 
+  const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
+    const currentTitle =
+      (node.data?.title as string) ||
+      (typeof node.data?.label === "string" ? node.data.label : "") ||
+      "";
+    setEditingNode({ id: node.id, currentTitle });
+    setNewTitleInput(currentTitle);
+  }, []);
+
   // Load Graph from SQLite Persistence
   useEffect(() => {
     const fetchGraph = async () => {
@@ -130,31 +144,36 @@ function WorkspaceCanvas() {
             const isNote =
               node.id.startsWith("note") || node.data?.type === "note";
             const isSynth = node.id.startsWith("synth");
+            const isResult = node.id.startsWith("result") || node.data?.summary;
             const isExp = node.id.startsWith("exp") || node.data?.status;
 
             return {
               ...node,
               style: {
-                background: isNote ? "#27272a" : "#18181b",
+                background: "#18181b",
                 color: isNote
                   ? "#fef08a"
                   : isSynth
                     ? "#c084fc"
-                    : isExp
-                      ? node.data?.status === "failed"
-                        ? "#f87171"
-                        : "#38bdf8"
-                      : "#34d399",
+                    : isResult
+                      ? "#818cf8"
+                      : isExp
+                        ? node.data?.status === "failed"
+                          ? "#f87171"
+                          : "#38bdf8"
+                        : "#34d399",
                 border: isNote
                   ? "1px solid #ca8a04"
                   : isSynth
                     ? "1px dashed #9333ea"
-                    : isExp
-                      ? "1px solid #0284c7"
-                      : "1px solid #059669",
+                    : isResult
+                      ? "1px solid #4f46e5"
+                      : isExp
+                        ? "1px solid #0284c7"
+                        : "1px solid #059669",
                 borderRadius: "10px",
                 padding: "16px",
-                width: isNote ? 220 : 270,
+                width: isNote ? 240 : isResult ? 380 : 270,
                 fontSize: "13px",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -181,6 +200,18 @@ function WorkspaceCanvas() {
     (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
     [],
   );
+
+  const onNodesDelete = useCallback(async (deletedNodes: Node[]) => {
+    for (const node of deletedNodes) {
+      try {
+        await fetch(`${BACKEND_URL}/api/workspace/node/${node.id}`, {
+          method: "DELETE",
+        });
+      } catch (e) {
+        console.error("Failed to delete node from DB:", e);
+      }
+    }
+  }, []);
 
   const onConnect: OnConnect = useCallback(async (connection) => {
     const edgeId = `e-${connection.source}-${connection.target}`;
@@ -220,6 +251,71 @@ function WorkspaceCanvas() {
     setChatMessages([]);
   };
 
+  const handleSaveNodeTitle = async () => {
+    if (!editingNode || !newTitleInput.trim()) {
+      setEditingNode(null);
+      return;
+    }
+
+    const { id } = editingNode;
+    const targetNode = nodes.find((n) => n.id === id);
+    if (!targetNode) return;
+
+    const isPaper = targetNode.id.startsWith("paper");
+    const isNote = targetNode.id.startsWith("note");
+
+    let formattedLabel: React.ReactNode | string = newTitleInput;
+    if (isPaper && !newTitleInput.startsWith("📄")) {
+      formattedLabel = `📄 ${newTitleInput}`;
+    } else if (isNote && !newTitleInput.startsWith("📝")) {
+      formattedLabel = `📝 ${newTitleInput}`;
+    }
+
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                title: newTitleInput,
+                label: formattedLabel,
+              },
+            }
+          : n,
+      ),
+    );
+
+    if (
+      activePaper?.id === id ||
+      activePaper?.id === targetNode.data?.paper_id
+    ) {
+      setActivePaper((prev) =>
+        prev ? { ...prev, title: newTitleInput } : null,
+      );
+    }
+
+    try {
+      await fetch(`${BACKEND_URL}/api/workspace/node`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: targetNode.id,
+          position: targetNode.position,
+          data: {
+            ...targetNode.data,
+            title: newTitleInput,
+            label: formattedLabel,
+          },
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to persist updated title:", err);
+    }
+
+    setEditingNode(null);
+  };
+
   const handleAddNoteToNode = (targetNodeId: string) => {
     const targetNode = nodes.find((n) => n.id === targetNodeId);
     const noteId = `note-${Date.now()}`;
@@ -231,7 +327,8 @@ function WorkspaceCanvas() {
       id: noteId,
       position: newPos,
       data: {
-        label: "📝 Note: Enter thesis observations or analysis...",
+        title: "Note",
+        label: "📝 Note: Double-click to edit your thoughts...",
         type: "note",
       },
       style: {
@@ -296,20 +393,27 @@ function WorkspaceCanvas() {
       id: synthId,
       position: { x: 380, y: 220 },
       data: {
-        label: "🔍 Cross-Reference Task",
-        title: "Study Synthesis",
-        summary:
-          "Connect two or more papers to this node, right-click, and select 'Run Cross-Reference'.",
+        title: "Cross-Reference Task",
+        label: (
+          <div className="space-y-1.5 text-left">
+            <div className="font-semibold text-purple-300 flex items-center gap-1.5">
+              <span>🔍 Cross-Reference Task</span>
+            </div>
+            <div className="text-[11px] text-zinc-400 font-normal leading-snug">
+              Connect 2 or more papers into this node, right-click, and select
+              &quot;Run Cross-Reference&quot;.
+            </div>
+          </div>
+        ),
       },
       style: {
         background: "#18181b",
         color: "#c084fc",
         border: "1px dashed #9333ea",
         borderRadius: "10px",
-        padding: "16px",
-        width: 280,
-        fontSize: "13px",
-        fontWeight: 600,
+        padding: "14px",
+        width: 290,
+        fontSize: "12px",
         cursor: "pointer",
       },
     };
@@ -318,26 +422,39 @@ function WorkspaceCanvas() {
 
   const handleRunSynthesis = async (synthNodeId: string) => {
     const incomingEdges = edges.filter((e) => e.target === synthNodeId);
-    const connectedPaperIds = incomingEdges.map((e) => {
-      const sourceNode = nodes.find((n) => n.id === e.source);
-      return (sourceNode?.data?.paper_id as string) || e.source;
-    });
+
+    const connectedPaperIds = incomingEdges
+      .map((edge) => {
+        const sourceNode = nodes.find((n) => n.id === edge.source);
+        return (sourceNode?.data?.paper_id as string) || edge.source;
+      })
+      .filter((id) => !id.startsWith("synth") && !id.startsWith("note"));
 
     if (connectedPaperIds.length < 2) {
       alert(
-        "Please connect at least 2 papers to this task node to cross-reference them.",
+        "Please connect at least 2 papers as sources into this Cross-Reference Task node.",
       );
       setMenu(null);
       return;
     }
 
     setMenu(null);
+
+    const synthNode = nodes.find((n) => n.id === synthNodeId);
     setNodes((prev) =>
       prev.map((n) =>
         n.id === synthNodeId
           ? {
               ...n,
-              data: { ...n.data, summary: "Comparing studies with Ollama..." },
+              data: {
+                ...n.data,
+                label: (
+                  <div className="flex items-center gap-2 text-purple-300 font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                    <span>Analyzing {connectedPaperIds.length} papers...</span>
+                  </div>
+                ),
+              },
             }
           : n,
       ),
@@ -358,24 +475,101 @@ function WorkspaceCanvas() {
                 ...n,
                 data: {
                   ...n.data,
-                  label: "📊 Comparison Complete",
-                  summary: data.comparison_summary,
-                },
-                style: {
-                  ...n.style,
-                  border: "1px solid #a855f7",
-                  color: "#d8b4fe",
+                  label: "🔍 Cross-Reference Task",
                 },
               }
             : n,
         ),
       );
+
+      const resultNodeId = `result-${Date.now()}`;
+      const posX = synthNode ? synthNode.position.x + 360 : 720;
+      const posY = synthNode ? synthNode.position.y - 40 : 200;
+
+      const resultNode: Node = {
+        id: resultNodeId,
+        position: { x: posX, y: posY },
+        data: {
+          title: "Synthesis Results",
+          label: (
+            <div className="space-y-2.5 text-left">
+              <div className="flex items-center justify-between border-b border-indigo-500/30 pb-2">
+                <span className="font-bold text-xs text-indigo-300">
+                  ⚡ Synthesis Results
+                </span>
+                <span className="text-[10px] font-medium text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
+                  {connectedPaperIds.length} Papers Compared
+                </span>
+              </div>
+              <div className="text-[11px] text-zinc-200 font-normal leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto select-text pr-1">
+                {data.comparison_summary}
+              </div>
+            </div>
+          ),
+          summary: data.comparison_summary,
+        },
+        style: {
+          background: "#18181b",
+          color: "#818cf8",
+          border: "1px solid #4f46e5",
+          borderRadius: "10px",
+          padding: "16px",
+          width: 380,
+          boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
+          cursor: "default",
+        },
+      };
+
+      const resultEdge: Edge = {
+        id: `e-${synthNodeId}-${resultNodeId}`,
+        source: synthNodeId,
+        target: resultNodeId,
+        animated: true,
+        label: "synthesized_into",
+        style: { stroke: "#818cf8", strokeWidth: 2 },
+      };
+
+      setNodes((prev) => [...prev, resultNode]);
+      setEdges((prev) => [...prev, resultEdge]);
+
+      await fetch(`${BACKEND_URL}/api/workspace/node`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: resultNodeId,
+          position: { x: posX, y: posY },
+          data: {
+            label: "⚡ Synthesis Results",
+            summary: data.comparison_summary,
+          },
+        }),
+      });
+
+      await fetch(`${BACKEND_URL}/api/workspace/edge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: resultEdge.id,
+          source: synthNodeId,
+          target: resultNodeId,
+          label: "synthesized_into",
+        }),
+      });
     } catch (e) {
-      console.error(e);
+      console.error("Synthesis execution error:", e);
+      alert(
+        "Failed to synthesize papers. Ensure Ollama and the backend are active.",
+      );
+      setNodes((prev) =>
+        prev.map((n) =>
+          n.id === synthNodeId
+            ? { ...n, data: { ...n.data, label: "🔍 Cross-Reference Task" } }
+            : n,
+        ),
+      );
     }
   };
 
-  // Background Task Agent Chat Execution
   const handleSendMessage = async () => {
     if (!chatInput.trim() || !activePaper) return;
     const userText = chatInput;
@@ -411,7 +605,6 @@ function WorkspaceCanvas() {
     }
   };
 
-  // Process File Ingestion
   const processUploadedFile = async (
     file: File,
     clientPosition?: { x: number; y: number },
@@ -550,7 +743,6 @@ function WorkspaceCanvas() {
         }}
       />
 
-      {/* Universal Drop Overlay */}
       {isDraggingOver && (
         <div className="absolute inset-0 z-50 bg-indigo-950/40 backdrop-blur-sm border-2 border-dashed border-indigo-500 pointer-events-none flex flex-col items-center justify-center gap-3">
           <UploadCloud className="w-12 h-12 text-indigo-400 animate-bounce" />
@@ -606,8 +798,8 @@ function WorkspaceCanvas() {
                   id: noteId,
                   position: { x: 250, y: 150 },
                   data: {
-                    label:
-                      "📝 Note: Enter your thesis thoughts or observations...",
+                    title: "Note",
+                    label: "📝 Note: Double-click to edit your thoughts...",
                   },
                   style: {
                     background: "#27272a",
@@ -615,7 +807,7 @@ function WorkspaceCanvas() {
                     border: "1px solid #ca8a04",
                     borderRadius: "8px",
                     padding: "14px",
-                    width: 220,
+                    width: 240,
                     fontSize: "12px",
                   },
                 },
@@ -662,9 +854,11 @@ function WorkspaceCanvas() {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodesDelete={onNodesDelete}
           onConnect={onConnect}
           onPaneClick={onPaneClick}
           onNodeContextMenu={onNodeContextMenu}
+          onNodeDoubleClick={onNodeDoubleClick}
           fitView
         >
           <Background
@@ -676,7 +870,7 @@ function WorkspaceCanvas() {
           <Controls className="!bg-zinc-900 !border-zinc-800 !text-white" />
         </ReactFlow>
 
-        {/* Floating Notification Pill when drawer is closed and agent finishes */}
+        {/* Floating Notification Pill */}
         {!agentDrawer && (isAgentThinking || hasUnreadNotification) && (
           <div
             onClick={() => {
@@ -712,6 +906,30 @@ function WorkspaceCanvas() {
             <div className="px-2 py-1 text-[10px] font-semibold text-zinc-500 uppercase border-b border-zinc-800">
               Actions
             </div>
+
+            <button
+              onClick={() => {
+                const targetNode = nodes.find((n) => n.id === menu.id);
+                if (targetNode) {
+                  const currTitle =
+                    (targetNode.data?.title as string) ||
+                    (typeof targetNode.data?.label === "string"
+                      ? targetNode.data.label
+                      : "") ||
+                    "";
+                  setEditingNode({
+                    id: targetNode.id,
+                    currentTitle: currTitle,
+                  });
+                  setNewTitleInput(currTitle);
+                }
+                setMenu(null);
+              }}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-900 transition text-left cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-cyan-400" /> Rename / Edit
+              Title
+            </button>
 
             <button
               onClick={() => {
@@ -752,7 +970,55 @@ function WorkspaceCanvas() {
         )}
       </main>
 
-      {/* Contextual Assistant Drawer with Resizable Left Drag Border */}
+      {/* Edit Title Modal */}
+      {editingNode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <span className="text-xs font-semibold text-zinc-200 flex items-center gap-2">
+                <Edit3 className="w-3.5 h-3.5 text-cyan-400" /> Edit Title
+              </span>
+              <button
+                onClick={() => setEditingNode(null)}
+                className="text-zinc-500 hover:text-zinc-300 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <label className="text-[11px] text-zinc-400 font-medium block mb-1">
+                Enter title or text:
+              </label>
+              <textarea
+                rows={3}
+                value={newTitleInput}
+                onChange={(e) => setNewTitleInput(e.target.value)}
+                placeholder="Type here..."
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500 resize-none"
+                autoFocus
+              />
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setEditingNode(null)}
+                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveNodeTitle}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white cursor-pointer"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resizable Contextual Assistant Drawer */}
       {agentDrawer && (
         <aside
           style={{ width: `${drawerWidth}px` }}
@@ -816,7 +1082,7 @@ function WorkspaceCanvas() {
             )}
           </div>
 
-          {/* Chat Input with Arrow Send */}
+          {/* Chat Input */}
           <div className="p-3 border-t border-zinc-800 bg-zinc-900/50">
             <form
               onSubmit={(e) => {
