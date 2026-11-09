@@ -1,7 +1,7 @@
 "use client";
 
 import "@xyflow/react/dist/style.css";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -17,6 +17,7 @@ import {
   OnEdgesChange,
   OnConnect,
   BackgroundVariant,
+  NodeTypes,
 } from "@xyflow/react";
 
 import {
@@ -33,7 +34,13 @@ import {
   Plus,
   CheckCircle2,
   Edit3,
+  Search,
 } from "lucide-react";
+
+import { DiscoveryDrawer, DiscoveredPaperItem } from "../components/DiscoveryDrawer";
+import { DiscoveryNode } from "../components/DiscoveryNode";
+import { PaperNode } from "../components/PaperNode";
+import { CodeExperimentNode } from "../components/CodeExperimentNode";
 
 const BACKEND_URL = "http://localhost:8000";
 
@@ -44,6 +51,7 @@ function WorkspaceCanvas() {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [agentDrawer, setAgentDrawer] = useState(false);
+  const [discoveryDrawer, setDiscoveryDrawer] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounter = useRef(0);
 
@@ -93,13 +101,14 @@ function WorkspaceCanvas() {
     id: string;
     top: number;
     left: number;
-    nodeData: any;
+    nodeData: Record<string, unknown>;
   } | null>(null);
 
   // Active Focused Paper for Chat
   const [activePaper, setActivePaper] = useState<{
     id: string;
     title: string;
+    abstract?: string;
   } | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<
@@ -107,6 +116,34 @@ function WorkspaceCanvas() {
   >([]);
   const [isAgentThinking, setIsAgentThinking] = useState(false);
   const [hasUnreadNotification, setHasUnreadNotification] = useState(false);
+
+  // Custom node types definition for ReactFlow
+  const nodeTypes: NodeTypes = useMemo(
+    () => ({
+      discovery: DiscoveryNode,
+      paper: PaperNode,
+      experiment: CodeExperimentNode,
+    }),
+    [],
+  );
+
+  // Set of paper IDs/DOIs present on canvas for duplicate prevention
+  const existingPaperKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const node of nodes) {
+      if (node.data?.doi && typeof node.data.doi === "string") {
+        keys.add(node.data.doi.toLowerCase());
+      }
+      if (node.data?.openalex_id && typeof node.data.openalex_id === "string") {
+        keys.add(node.data.openalex_id);
+      }
+      if (node.data?.paper_id && typeof node.data.paper_id === "string") {
+        keys.add(node.data.paper_id);
+      }
+      keys.add(node.id);
+    }
+    return keys;
+  }, [nodes]);
 
   const onPaneClick = useCallback(() => setMenu(null), []);
 
@@ -117,7 +154,7 @@ function WorkspaceCanvas() {
         id: node.id,
         top: event.clientY,
         left: event.clientX,
-        nodeData: node.data,
+        nodeData: (node.data as Record<string, unknown>) || {},
       });
     },
     [],
@@ -141,6 +178,13 @@ function WorkspaceCanvas() {
         const data = await res.json();
         if (data.nodes) {
           const styledNodes = data.nodes.map((node: Node) => {
+            if (node.type === "discovery" || node.id.startsWith("discovery")) {
+              return {
+                ...node,
+                type: "discovery",
+              };
+            }
+
             const isNote =
               node.id.startsWith("note") || node.data?.type === "note";
             const isSynth = node.id.startsWith("synth");
@@ -263,12 +307,15 @@ function WorkspaceCanvas() {
 
     const isPaper = targetNode.id.startsWith("paper");
     const isNote = targetNode.id.startsWith("note");
+    const isDiscovery = targetNode.type === "discovery" || targetNode.id.startsWith("discovery");
 
     let formattedLabel: React.ReactNode | string = newTitleInput;
     if (isPaper && !newTitleInput.startsWith("📄")) {
       formattedLabel = `📄 ${newTitleInput}`;
     } else if (isNote && !newTitleInput.startsWith("📝")) {
       formattedLabel = `📝 ${newTitleInput}`;
+    } else if (isDiscovery) {
+      formattedLabel = newTitleInput;
     }
 
     setNodes((prev) =>
@@ -301,11 +348,12 @@ function WorkspaceCanvas() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: targetNode.id,
+          type: targetNode.type || "default",
           position: targetNode.position,
           data: {
             ...targetNode.data,
             title: newTitleInput,
-            label: formattedLabel,
+            label: typeof formattedLabel === "string" ? formattedLabel : newTitleInput,
           },
         }),
       });
@@ -320,7 +368,7 @@ function WorkspaceCanvas() {
     const targetNode = nodes.find((n) => n.id === targetNodeId);
     const noteId = `note-${Date.now()}`;
     const newPos = targetNode
-      ? { x: targetNode.position.x + 300, y: targetNode.position.y }
+      ? { x: targetNode.position.x + 320, y: targetNode.position.y }
       : { x: 200, y: 200 };
 
     const noteNode: Node = {
@@ -375,13 +423,16 @@ function WorkspaceCanvas() {
     const paperKey =
       (node.data?.paper_id as string) || (node.id as string) || "";
     const title = (node.data?.title || node.data?.label || "Paper") as string;
-    setActivePaper({ id: paperKey, title });
+    const abstract = (node.data?.abstract as string) || "";
+    setActivePaper({ id: paperKey, title, abstract });
     setAgentDrawer(true);
     setHasUnreadNotification(false);
     setChatMessages([
       {
         sender: "agent",
-        text: `Ask me anything about "${title}". You can ask about sample sizes, participant criteria, or conclusions.`,
+        text: `Ask me anything about "${title}". You can ask about methodology, key findings, or baseline details.${
+          abstract ? " (Verified abstract context available)" : ""
+        }`,
       },
     ]);
     setMenu(null);
@@ -592,7 +643,7 @@ function WorkspaceCanvas() {
         { sender: "agent", text: data.reply },
       ]);
       setHasUnreadNotification(true);
-    } catch (err) {
+    } catch {
       setChatMessages((prev) => [
         ...prev,
         {
@@ -676,6 +727,7 @@ function WorkspaceCanvas() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: actualId,
+          type: "default",
           position: flowPosition,
           data: {
             label: `📄 ${displayName}`,
@@ -687,6 +739,71 @@ function WorkspaceCanvas() {
       });
     } catch (err) {
       console.error("Upload error:", err);
+    }
+  };
+
+  // Add paper discovered via Discovery Hub to React Flow canvas
+  const handleAddDiscoveryPaper = async (paper: DiscoveredPaperItem) => {
+    // Duplicate prevention using DOI and OpenAlex ID
+    if (paper.doi && existingPaperKeys.has(paper.doi.toLowerCase())) {
+      alert(`Paper with DOI "${paper.doi}" is already on the canvas.`);
+      return;
+    }
+    if (paper.openalex_id && existingPaperKeys.has(paper.openalex_id)) {
+      alert(`Paper "${paper.title}" is already on the canvas.`);
+      return;
+    }
+
+    const cleanDoiId = paper.doi ? paper.doi.replace(/[^a-zA-Z0-9_-]/g, "_") : "";
+    const uniqueId = cleanDoiId ? `discovery-${cleanDoiId}` : `discovery-${Date.now()}`;
+
+    // Calculate smart cascaded position on canvas so nodes do not overlap
+    const existingCount = nodes.length;
+    const posX = 160 + (existingCount % 4) * 340;
+    const posY = 140 + Math.floor(existingCount / 4) * 220;
+
+    const nodeData = {
+      id: uniqueId,
+      paper_id: uniqueId,
+      title: paper.title,
+      authors: paper.authors,
+      year: paper.year,
+      doi: paper.doi,
+      publication: paper.publication,
+      abstract: paper.abstract,
+      openalex_id: paper.openalex_id,
+      is_oa: paper.is_oa,
+      oa_status: paper.oa_status,
+      pdf_url: paper.pdf_url,
+      landing_page_url: paper.landing_page_url,
+      provider: paper.primary_provider,
+      providers: paper.providers,
+      summary: paper.abstract || "Verified academic metadata from Discovery Hub.",
+    };
+
+    const newNode: Node = {
+      id: uniqueId,
+      type: "discovery",
+      position: { x: posX, y: posY },
+      data: nodeData,
+    };
+
+    setNodes((prev) => [...prev, newNode]);
+
+    // Persist metadata to SQLite
+    try {
+      await fetch(`${BACKEND_URL}/api/workspace/node`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: uniqueId,
+          type: "discovery",
+          position: { x: posX, y: posY },
+          data: nodeData,
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to persist discovery node:", err);
     }
   };
 
@@ -775,6 +892,19 @@ function WorkspaceCanvas() {
             <RotateCcw className="w-3.5 h-3.5" /> Reset
           </button>
 
+          {/* Research Discovery Hub Trigger */}
+          <button
+            onClick={() => setDiscoveryDrawer((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition cursor-pointer ${
+              discoveryDrawer
+                ? "bg-cyan-700 hover:bg-cyan-600 ring-2 ring-cyan-400/50"
+                : "bg-cyan-600 hover:bg-cyan-500"
+            }`}
+            title="Search academic literature (OpenAlex, Crossref, Unpaywall)"
+          >
+            <Search className="w-3.5 h-3.5" /> Discovery Hub
+          </button>
+
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white transition cursor-pointer"
@@ -852,6 +982,7 @@ function WorkspaceCanvas() {
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodesDelete={onNodesDelete}
@@ -1018,6 +1149,15 @@ function WorkspaceCanvas() {
         </div>
       )}
 
+      {/* Research Discovery Hub Drawer */}
+      <DiscoveryDrawer
+        isOpen={discoveryDrawer}
+        onClose={() => setDiscoveryDrawer(false)}
+        onAddPaper={handleAddDiscoveryPaper}
+        existingPaperKeys={existingPaperKeys}
+        backendUrl={BACKEND_URL}
+      />
+
       {/* Resizable Contextual Assistant Drawer */}
       {agentDrawer && (
         <aside
@@ -1058,7 +1198,7 @@ function WorkspaceCanvas() {
               <div className="text-center text-zinc-500 py-12">
                 Right-click any paper node and choose <br />
                 <span className="text-indigo-400 font-medium">
-                  "Ask Agent About Paper"
+                  &quot;Ask Agent About Paper&quot;
                 </span>
               </div>
             ) : (

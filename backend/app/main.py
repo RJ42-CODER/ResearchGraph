@@ -9,6 +9,7 @@ from pydantic import BaseModel
 import ollama
 
 from app.api.papers import router as papers_router
+from app.api.discovery import router as discovery_router
 from app.sandbox.runner import execute_sandboxed_code
 from app.agents.pipeline import research_graph_pipeline
 from app.db.database import init_db, save_node, save_edge, load_graph, DB_PATH
@@ -28,6 +29,7 @@ app.add_middleware(
 )
 
 app.include_router(papers_router)
+app.include_router(discovery_router)
 
 # Request Models
 class ChatRequest(BaseModel):

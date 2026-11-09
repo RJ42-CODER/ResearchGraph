@@ -5,6 +5,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
+.pytest_cache/
 
 # Node & Next.js
 node_modules/
@@ -16,11 +17,18 @@ frontend/out/
 data/
 backend/data/
 *.db
+*.sqlite
+*.sqlite3
 chroma_db/
 uploads/
 
 # Environment & OS files
 .env
+.env.*
+!.env.example
+*.env
+backend/.env
+backend/app/.env
 .env.local
 .DS_Store
 Thumbs.db

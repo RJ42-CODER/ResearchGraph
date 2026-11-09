@@ -4,7 +4,24 @@ import React from "react";
 import { Handle, Position } from "@xyflow/react";
 import { FileText, Sparkles } from "lucide-react";
 
-export function PaperNode({ data }: { data: any }) {
+export interface PaperNodeData {
+  title?: string;
+  year?: string | number;
+  summary?: string;
+  citations?: string;
+  doi?: string;
+  authors?: string[];
+  publication?: string;
+  is_oa?: boolean;
+  oa_status?: string;
+  pdf_url?: string;
+  landing_page_url?: string;
+  provider?: string;
+  providers?: string[];
+  [key: string]: unknown;
+}
+
+export function PaperNode({ data }: { data: PaperNodeData }) {
   return (
     <div className="w-80 rounded-xl border border-zinc-800 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-md transition-all hover:border-zinc-700">
       <Handle type="target" position={Position.Left} className="!bg-emerald-500 !w-3 !h-3" />
