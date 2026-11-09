@@ -4,7 +4,15 @@ import React from "react";
 import { Handle, Position } from "@xyflow/react";
 import { Terminal, CheckCircle2, AlertCircle } from "lucide-react";
 
-export function CodeExperimentNode({ data }: { data: any }) {
+export interface CodeExperimentData {
+  status?: "success" | "failed" | string;
+  label?: string;
+  codeSnippet?: string;
+  metric?: string;
+  [key: string]: unknown;
+}
+
+export function CodeExperimentNode({ data }: { data: CodeExperimentData }) {
   const isSuccess = data.status === "success";
 
   return (
