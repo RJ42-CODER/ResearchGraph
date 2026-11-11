@@ -16,6 +16,7 @@ import {
   Globe,
   Lock,
   Unlock,
+  Layers,
 } from "lucide-react";
 
 export interface DiscoveredPaperItem {
@@ -131,18 +132,18 @@ export function DiscoveryDrawer({
   };
 
   return (
-    <aside className="fixed top-14 right-0 bottom-0 w-[490px] max-w-full z-40 bg-zinc-950 border-l border-zinc-800 flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
+    <aside className="fixed top-16 right-0 bottom-0 w-[540px] max-w-full z-40 bg-zinc-950/98 backdrop-blur-md border-l border-zinc-800 flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
       {/* Drawer Header */}
-      <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/90 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-cyan-950/80 border border-cyan-800/80 flex items-center justify-center text-cyan-400">
-            <Globe className="w-4 h-4" />
+      <div className="h-16 px-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/90 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-cyan-950/90 border border-cyan-800/80 flex items-center justify-center text-cyan-400 shadow-sm">
+            <Globe className="w-4.5 h-4.5" />
           </div>
           <div>
             <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
               Research Discovery Hub
             </h2>
-            <p className="text-[11px] text-zinc-500">
+            <p className="text-xs text-zinc-400">
               OpenAlex • Crossref • Unpaywall
             </p>
           </div>
@@ -150,55 +151,60 @@ export function DiscoveryDrawer({
 
         <button
           onClick={onClose}
-          className="p-1 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition cursor-pointer"
+          className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition cursor-pointer"
           title="Close Discovery Hub"
         >
-          <X className="w-4 h-4" />
+          <X className="w-5 h-5" />
         </button>
       </div>
 
       {/* Search Bar & Filters */}
-      <div className="p-4 border-b border-zinc-800/80 bg-zinc-900/40 space-y-3">
-        <form onSubmit={handleSearch} className="space-y-2.5">
+      <div className="p-4 border-b border-zinc-800 bg-zinc-900/50 space-y-3 shrink-0">
+        <form onSubmit={handleSearch} className="space-y-3">
+          {/* Search Input */}
           <div className="relative flex items-center">
-            <Search className="w-4 h-4 text-zinc-400 absolute left-3 pointer-events-none" />
+            <Search className="w-4.5 h-4.5 text-zinc-400 absolute left-3.5 pointer-events-none" />
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search title, keywords, or DOI (e.g. 10.1038/...)"
-              className="w-full bg-zinc-950 border border-zinc-700/80 rounded-lg pl-9 pr-8 py-2 text-xs text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500 transition"
+              className="w-full h-11 bg-zinc-950 border border-zinc-700/80 rounded-xl pl-10 pr-9 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/40 transition shadow-inner"
               autoFocus
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                className="absolute right-2.5 text-zinc-500 hover:text-zinc-300"
+                className="absolute right-3 p-0.5 text-zinc-400 hover:text-zinc-200 transition"
+                title="Clear input"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-              <span>Source:</span>
+          {/* Provider Controls and Search Button */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-zinc-500" /> Source:
+              </span>
               <select
                 value={provider}
                 onChange={(e) => setProvider(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1 text-[11px] text-zinc-200 focus:outline-none focus:border-cyan-500"
+                className="bg-zinc-950 border border-zinc-700/80 rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-200 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 cursor-pointer transition"
               >
                 <option value="all">All Providers (Federated)</option>
-                <option value="openalex">OpenAlex (Primary)</option>
-                <option value="crossref">Crossref (Metadata)</option>
+                <option value="openalex">OpenAlex (Primary Search)</option>
+                <option value="crossref">Crossref (Metadata Registry)</option>
               </select>
             </div>
 
             <button
               type="submit"
               disabled={loading || !query.trim()}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-xs font-medium text-white transition cursor-pointer"
+              className="h-9 px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:scale-[0.98] disabled:opacity-50 text-xs font-semibold text-white transition flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               {loading ? (
                 <>
@@ -216,7 +222,7 @@ export function DiscoveryDrawer({
         </form>
 
         {warnings.length > 0 && (
-          <div className="p-2 rounded bg-amber-950/40 border border-amber-800/40 text-[11px] text-amber-300">
+          <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-800/40 text-xs text-amber-300">
             {warnings.map((w, idx) => (
               <p key={idx}>⚠️ {w}</p>
             ))}
@@ -225,20 +231,20 @@ export function DiscoveryDrawer({
       </div>
 
       {/* Results List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {loading && (
-          <div className="space-y-3 pt-6">
-            <div className="flex flex-col items-center justify-center gap-2 text-zinc-500 py-8">
+          <div className="space-y-3.5 pt-4">
+            <div className="flex flex-col items-center justify-center gap-2.5 text-zinc-400 py-8">
               <RefreshCw className="w-6 h-6 animate-spin text-cyan-400" />
-              <span className="text-xs">Querying academic indices...</span>
+              <span className="text-xs font-medium">Querying academic literature indices...</span>
             </div>
             {[1, 2, 3].map((n) => (
               <div
                 key={n}
-                className="p-4 rounded-xl border border-zinc-800/80 bg-zinc-900/30 animate-pulse space-y-2.5"
+                className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/30 animate-pulse space-y-3"
               >
                 <div className="h-4 bg-zinc-800 rounded w-3/4" />
-                <div className="h-3 bg-zinc-800/60 rounded w-1/2" />
+                <div className="h-3 bg-zinc-800/70 rounded w-1/2" />
                 <div className="h-3 bg-zinc-800/40 rounded w-full" />
               </div>
             ))}
@@ -246,44 +252,44 @@ export function DiscoveryDrawer({
         )}
 
         {!loading && error && (
-          <div className="p-4 rounded-xl border border-rose-900/50 bg-rose-950/30 text-rose-300 space-y-2.5">
-            <div className="flex items-center gap-2 text-xs font-semibold">
-              <AlertCircle className="w-4 h-4 text-rose-400" />
+          <div className="p-4 rounded-xl border border-rose-900/60 bg-rose-950/30 text-rose-300 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-rose-200">
+              <AlertCircle className="w-4.5 h-4.5 text-rose-400" />
               <span>Search Error</span>
             </div>
             <p className="text-xs text-rose-300/90 leading-relaxed">{error}</p>
             <button
               onClick={() => handleSearch()}
-              className="mt-1 flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-900/60 hover:bg-rose-900 text-[11px] text-rose-100 border border-rose-800 transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-900/70 hover:bg-rose-900 text-xs font-medium text-rose-100 border border-rose-700/60 transition cursor-pointer"
             >
-              <RefreshCw className="w-3 h-3" /> Retry Search
+              <RefreshCw className="w-3.5 h-3.5" /> Retry Search
             </button>
           </div>
         )}
 
         {!loading && !error && hasSearched && results.length === 0 && (
-          <div className="text-center py-16 space-y-2 text-zinc-500">
-            <BookOpen className="w-8 h-8 mx-auto opacity-40 text-zinc-400" />
-            <p className="text-xs font-medium text-zinc-400">
+          <div className="text-center py-20 space-y-3 text-zinc-500">
+            <BookOpen className="w-9 h-9 mx-auto opacity-40 text-zinc-400" />
+            <p className="text-sm font-medium text-zinc-300">
               No matching papers found
             </p>
-            <p className="text-[11px] text-zinc-600 max-w-xs mx-auto">
-              Try adjusting your query keywords, searching by DOI, or selecting &quot;All Providers&quot;.
+            <p className="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
+              Try adjusting your query keywords, searching directly by DOI (e.g. 10.1038/...), or selecting &quot;All Providers&quot;.
             </p>
           </div>
         )}
 
         {!loading && !error && !hasSearched && (
-          <div className="text-center py-20 space-y-3 text-zinc-500">
-            <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-400">
-              <Search className="w-5 h-5 text-cyan-400" />
+          <div className="text-center py-24 space-y-3.5 text-zinc-500">
+            <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-400 shadow-sm">
+              <Search className="w-6 h-6 text-cyan-400" />
             </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-zinc-300">
+            <div className="space-y-1.5">
+              <p className="text-sm font-semibold text-zinc-200">
                 Discover Verified Research
               </p>
-              <p className="text-[11px] text-zinc-500 max-w-xs mx-auto leading-relaxed">
-                Search millions of papers via OpenAlex & Crossref with automatic Open Access full-text resolution via Unpaywall.
+              <p className="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
+                Search global literature via OpenAlex & Crossref with automatic Open Access full-text resolution via Unpaywall.
               </p>
             </div>
           </div>
@@ -298,31 +304,31 @@ export function DiscoveryDrawer({
             return (
               <div
                 key={paper.id}
-                className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:border-zinc-700/80 transition space-y-3 text-left"
+                className="p-4 rounded-xl border border-zinc-800/90 bg-zinc-900/40 hover:bg-zinc-900/70 hover:border-zinc-700/80 transition duration-150 space-y-3 text-left shadow-sm"
               >
-                {/* Header: Badges */}
+                {/* Header: Badges & Add Button */}
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {/* Provider badge */}
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60">
-                      {paper.primary_provider.toUpperCase()}
+                    <span className="text-[11px] font-semibold tracking-wider px-2.5 py-0.5 rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700/70 uppercase">
+                      {paper.primary_provider}
                     </span>
 
                     {/* Open Access badge */}
                     {paper.is_oa ? (
-                      <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/50">
-                        <Unlock className="w-2.5 h-2.5" />
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 shadow-sm">
+                        <Unlock className="w-3 h-3 text-emerald-400" />
                         <span>Open Access{paper.oa_status ? ` (${paper.oa_status})` : ""}</span>
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-400 border border-zinc-700/50">
-                        <Lock className="w-2.5 h-2.5" />
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-zinc-800/90 text-zinc-400 border border-zinc-700/60">
+                        <Lock className="w-3 h-3 text-zinc-400" />
                         <span>Closed Access</span>
                       </span>
                     )}
 
                     {paper.year && (
-                      <span className="text-[10px] font-medium text-zinc-400">
+                      <span className="text-[11px] font-medium text-zinc-400 bg-zinc-900/80 px-2 py-0.5 rounded-full border border-zinc-800">
                         {paper.year}
                       </span>
                     )}
@@ -332,10 +338,10 @@ export function DiscoveryDrawer({
                   <button
                     onClick={() => onAddPaper(paper)}
                     disabled={added}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer active:scale-[0.98] ${
                       added
-                        ? "bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 cursor-default"
-                        : "bg-cyan-600 hover:bg-cyan-500 text-white"
+                        ? "bg-emerald-950/80 border border-emerald-700/80 text-emerald-300 cursor-default"
+                        : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-sm hover:ring-2 hover:ring-cyan-400/30"
                     }`}
                   >
                     {added ? (
@@ -354,31 +360,31 @@ export function DiscoveryDrawer({
 
                 {/* Title */}
                 <div>
-                  <h3 className="text-xs font-semibold text-zinc-100 leading-snug">
+                  <h3 className="text-sm font-semibold text-zinc-100 hover:text-cyan-200 leading-snug transition-colors">
                     {paper.title}
                   </h3>
-                  <p className="mt-1 text-[11px] text-zinc-400">
+                  <p className="mt-1 text-xs text-zinc-300 font-normal leading-relaxed">
                     {formatAuthors(paper.authors)}
                   </p>
                 </div>
 
                 {/* Publication / Venue */}
                 {paper.publication && (
-                  <p className="text-[11px] text-zinc-400 italic">
+                  <p className="text-xs text-zinc-400 italic">
                     {paper.publication}
                   </p>
                 )}
 
                 {/* DOI & Links */}
-                <div className="flex items-center gap-3 pt-1 border-t border-zinc-800/60 text-[11px] flex-wrap">
+                <div className="flex items-center gap-3.5 pt-2 border-t border-zinc-800/70 text-xs flex-wrap">
                   {paper.doi && (
                     <a
                       href={`https://doi.org/${paper.doi}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+                      className="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 underline underline-offset-2 transition"
                     >
-                      <span>DOI: {paper.doi}</span>
+                      <span className="font-medium">DOI: {paper.doi}</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   )}
@@ -388,11 +394,11 @@ export function DiscoveryDrawer({
                       href={paper.pdf_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-medium"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-800/60 px-2.5 py-1 rounded-md transition shadow-sm"
                     >
-                      <FileText className="w-3 h-3" />
+                      <FileText className="w-3.5 h-3.5 text-emerald-400" />
                       <span>PDF Full Text</span>
-                      <ExternalLink className="w-2.5 h-2.5" />
+                      <ExternalLink className="w-3 h-3 text-emerald-400" />
                     </a>
                   )}
 
@@ -401,10 +407,10 @@ export function DiscoveryDrawer({
                       href={paper.landing_page_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-zinc-400 hover:text-zinc-200"
+                      className="inline-flex items-center gap-1 text-zinc-400 hover:text-zinc-200 transition"
                     >
                       <span>Publisher Link</span>
-                      <ExternalLink className="w-2.5 h-2.5" />
+                      <ExternalLink className="w-3 h-3" />
                     </a>
                   )}
                 </div>
@@ -415,20 +421,20 @@ export function DiscoveryDrawer({
                     <button
                       type="button"
                       onClick={() => toggleAbstract(paper.id)}
-                      className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition cursor-pointer py-0.5"
                     >
                       {isExpanded ? (
                         <>
-                          <ChevronUp className="w-3 h-3" /> Hide Abstract
+                          <ChevronUp className="w-3.5 h-3.5 text-cyan-400" /> Hide Abstract
                         </>
                       ) : (
                         <>
-                          <ChevronDown className="w-3 h-3" /> View Abstract
+                          <ChevronDown className="w-3.5 h-3.5 text-cyan-400" /> View Abstract
                         </>
                       )}
                     </button>
                     {isExpanded && (
-                      <div className="mt-2 p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800 text-[11px] text-zinc-300 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">
+                      <div className="mt-2 p-3 rounded-lg bg-zinc-950 border border-zinc-800/90 text-xs text-zinc-300 leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap select-text">
                         {paper.abstract}
                       </div>
                     )}

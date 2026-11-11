@@ -217,7 +217,7 @@ function WorkspaceCanvas() {
                         : "1px solid #059669",
                 borderRadius: "10px",
                 padding: "16px",
-                width: isNote ? 240 : isResult ? 380 : 270,
+                width: isNote ? 250 : isResult ? 400 : 310,
                 fontSize: "13px",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -368,7 +368,7 @@ function WorkspaceCanvas() {
     const targetNode = nodes.find((n) => n.id === targetNodeId);
     const noteId = `note-${Date.now()}`;
     const newPos = targetNode
-      ? { x: targetNode.position.x + 320, y: targetNode.position.y }
+      ? { x: targetNode.position.x + 340, y: targetNode.position.y }
       : { x: 200, y: 200 };
 
     const noteNode: Node = {
@@ -385,7 +385,7 @@ function WorkspaceCanvas() {
         border: "1px solid #ca8a04",
         borderRadius: "8px",
         padding: "14px",
-        width: 240,
+        width: 250,
         fontSize: "12px",
       },
     };
@@ -463,7 +463,7 @@ function WorkspaceCanvas() {
         border: "1px dashed #9333ea",
         borderRadius: "10px",
         padding: "14px",
-        width: 290,
+        width: 300,
         fontSize: "12px",
         cursor: "pointer",
       },
@@ -565,7 +565,7 @@ function WorkspaceCanvas() {
           border: "1px solid #4f46e5",
           borderRadius: "10px",
           padding: "16px",
-          width: 380,
+          width: 400,
           boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
           cursor: "default",
         },
@@ -687,7 +687,7 @@ function WorkspaceCanvas() {
         border: "1px solid #059669",
         borderRadius: "10px",
         padding: "16px",
-        width: 260,
+        width: 310,
         fontSize: "13px",
         fontWeight: 600,
         cursor: "pointer",
@@ -759,8 +759,8 @@ function WorkspaceCanvas() {
 
     // Calculate smart cascaded position on canvas so nodes do not overlap
     const existingCount = nodes.length;
-    const posX = 160 + (existingCount % 4) * 340;
-    const posY = 140 + Math.floor(existingCount / 4) * 220;
+    const posX = 160 + (existingCount % 4) * 360;
+    const posY = 140 + Math.floor(existingCount / 4) * 230;
 
     const nodeData = {
       id: uniqueId,
@@ -870,12 +870,12 @@ function WorkspaceCanvas() {
       )}
 
       {/* Top Header */}
-      <header className="absolute top-0 left-0 right-0 z-20 h-14 border-b border-zinc-800 bg-zinc-950/90 px-6 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded bg-indigo-600 flex items-center justify-center font-bold text-xs text-white">
+      <header className="absolute top-0 left-0 right-0 z-20 h-16 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-sm px-6 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-xs text-white shadow-sm">
             R
           </div>
-          <span className="font-semibold text-sm text-zinc-100">
+          <span className="font-semibold text-sm text-zinc-100 tracking-tight">
             ResearchGraph{" "}
             <span className="text-zinc-500 font-normal">
               / Multi-Paper Workspace
@@ -883,40 +883,40 @@ function WorkspaceCanvas() {
           </span>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <button
             onClick={resetCanvas}
             title="Clear workspace"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-rose-950/60 text-xs font-medium text-zinc-400 hover:text-rose-400 border border-zinc-800 transition cursor-pointer"
+            className="flex items-center gap-2 h-[42px] px-3.5 rounded-lg bg-zinc-900/90 hover:bg-rose-950/60 active:scale-[0.98] text-[13px] font-medium text-zinc-300 hover:text-rose-300 border border-zinc-800 hover:border-rose-900/50 transition cursor-pointer select-none"
           >
-            <RotateCcw className="w-3.5 h-3.5" /> Reset
+            <RotateCcw className="w-4 h-4" /> Reset
           </button>
 
           {/* Research Discovery Hub Trigger */}
           <button
             onClick={() => setDiscoveryDrawer((prev) => !prev)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition cursor-pointer ${
+            className={`flex items-center gap-2 h-[42px] px-4 rounded-lg text-[13px] font-medium text-white transition cursor-pointer select-none active:scale-[0.98] shadow-sm ${
               discoveryDrawer
                 ? "bg-cyan-700 hover:bg-cyan-600 ring-2 ring-cyan-400/50"
                 : "bg-cyan-600 hover:bg-cyan-500"
             }`}
             title="Search academic literature (OpenAlex, Crossref, Unpaywall)"
           >
-            <Search className="w-3.5 h-3.5" /> Discovery Hub
+            <Search className="w-4 h-4" /> Discovery Hub
           </button>
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white transition cursor-pointer"
+            className="flex items-center gap-2 h-[42px] px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-[13px] font-medium text-white transition cursor-pointer select-none shadow-sm"
           >
-            <Plus className="w-3.5 h-3.5" /> Add Paper
+            <Plus className="w-4 h-4" /> Add Paper
           </button>
 
           <button
             onClick={handleAddSynthesisNode}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-950/50 hover:bg-purple-900/60 text-xs font-medium text-purple-300 border border-purple-800/60 transition cursor-pointer"
+            className="flex items-center gap-2 h-[42px] px-4 rounded-lg bg-purple-950/60 hover:bg-purple-900/60 active:scale-[0.98] text-[13px] font-medium text-purple-200 border border-purple-800/60 transition cursor-pointer select-none"
           >
-            <GitFork className="w-3.5 h-3.5" /> + Cross-Reference Task
+            <GitFork className="w-4 h-4" /> + Cross-Reference Task
           </button>
 
           <button
@@ -937,15 +937,15 @@ function WorkspaceCanvas() {
                     border: "1px solid #ca8a04",
                     borderRadius: "8px",
                     padding: "14px",
-                    width: 240,
+                    width: 250,
                     fontSize: "12px",
                   },
                 },
               ]);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-xs font-medium text-amber-300 border border-amber-900/40 transition cursor-pointer"
+            className="flex items-center gap-2 h-[42px] px-4 rounded-lg bg-zinc-900 hover:bg-zinc-800/90 active:scale-[0.98] text-[13px] font-medium text-amber-300 border border-amber-900/50 transition cursor-pointer select-none"
           >
-            <StickyNote className="w-3.5 h-3.5" /> + Add Note
+            <StickyNote className="w-4 h-4" /> + Add Note
           </button>
 
           <button
@@ -953,18 +953,18 @@ function WorkspaceCanvas() {
               setAgentDrawer(!agentDrawer);
               setHasUnreadNotification(false);
             }}
-            className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition cursor-pointer ${
+            className={`relative flex items-center gap-2 h-[42px] px-4 rounded-lg text-[13px] font-medium text-white transition cursor-pointer select-none active:scale-[0.98] shadow-sm ${
               hasUnreadNotification
                 ? "bg-amber-600 hover:bg-amber-500 animate-pulse"
                 : "bg-indigo-600 hover:bg-indigo-500"
             }`}
           >
-            <Bot className="w-3.5 h-3.5" />
+            <Bot className="w-4 h-4" />
             {activePaper
               ? `Chat (${activePaper.title.slice(0, 10)}...)`
               : "Assistant"}
             {hasUnreadNotification && (
-              <span className="w-2 h-2 rounded-full bg-amber-200 animate-ping absolute -top-0.5 -right-0.5" />
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-200 animate-ping absolute -top-0.5 -right-0.5" />
             )}
           </button>
         </div>
@@ -974,8 +974,8 @@ function WorkspaceCanvas() {
       <main
         style={{
           width: "100%",
-          height: "calc(100vh - 56px)",
-          marginTop: "56px",
+          height: "calc(100vh - 64px)",
+          marginTop: "64px",
           position: "relative",
         }}
       >
@@ -1162,7 +1162,7 @@ function WorkspaceCanvas() {
       {agentDrawer && (
         <aside
           style={{ width: `${drawerWidth}px` }}
-          className="relative h-full border-l border-zinc-800 bg-zinc-950 pt-14 flex flex-col z-20 shrink-0 select-text"
+          className="relative h-full border-l border-zinc-800 bg-zinc-950 pt-16 flex flex-col z-20 shrink-0 select-text"
         >
           {/* Draggable Handle on Left Edge */}
           <div
