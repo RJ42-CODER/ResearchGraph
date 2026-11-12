@@ -3,7 +3,7 @@ import shutil
 import uuid
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 import pypdf
-from app.db.vector_store import index_paper_chunks
+from app.db.vector_store import index_paper_text
 
 router = APIRouter(prefix="/api/papers", tags=["Papers"])
 
@@ -19,19 +19,9 @@ def process_and_index_pdf(save_path: str, file_id: str):
             text = page.extract_text()
             if text:
                 extracted_text += f"\n[Page {idx + 1}]\n" + text
-        
-        # 600-character chunks with 200 overlap
-        chunk_size = 600
-        overlap = 200
-        chunks = []
-        start = 0
-        while start < len(extracted_text):
-            end = start + chunk_size
-            chunks.append(extracted_text[start:end])
-            start += (chunk_size - overlap)
 
-        index_paper_chunks(paper_id=file_id, chunks=chunks)
-        print(f"[ChromaDB] Indexed {len(chunks)} chunks for paper {file_id}")
+        chunk_count = index_paper_text(paper_id=file_id, text=extracted_text)
+        print(f"[ChromaDB] Indexed {chunk_count} chunks for paper {file_id}")
     except Exception as e:
         print(f"[ChromaDB Error] Background indexing failed: {e}")
 

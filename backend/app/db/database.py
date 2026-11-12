@@ -78,3 +78,25 @@ def load_graph():
 
     conn.close()
     return {"nodes": nodes, "edges": edges}
+
+
+def get_node_data(node_id: str) -> dict | None:
+    """Fetch stored JSON data for a workspace node by node ID."""
+    clean_id = (node_id or "").strip()
+    if not clean_id:
+        return None
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT node_type, data_json FROM graph_nodes WHERE id = ?", (clean_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    try:
+        data = json.loads(row[1]) if row[1] else {}
+        if isinstance(data, dict):
+            data.setdefault("_node_type", row[0])
+            return data
+    except Exception:
+        return None
+    return None

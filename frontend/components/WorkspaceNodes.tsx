@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { FormattedPlainText } from "./FormattedPlainText";
 import { ResizableNodeFrame, ScrollableNodeBody } from "./ResizableNodeFrame";
 
 export interface WorkspaceNodeData {
@@ -40,9 +41,10 @@ export function SynthesisResultNode({
       </div>
 
       <ScrollableNodeBody className="mt-2.5 pr-1">
-        <div className="text-[11px] text-zinc-200 font-normal leading-relaxed whitespace-pre-wrap">
-          {data.summary || "No synthesis output available."}
-        </div>
+        <FormattedPlainText
+          text={data.summary || "No synthesis output available."}
+          className="text-[11px] text-zinc-200 font-normal leading-relaxed break-words"
+        />
       </ScrollableNodeBody>
     </ResizableNodeFrame>
   );

@@ -39,6 +39,7 @@ import {
 
 import { DiscoveryDrawer, DiscoveredPaperItem } from "../components/DiscoveryDrawer";
 import { DiscoveryNode } from "../components/DiscoveryNode";
+import { FormattedPlainText } from "../components/FormattedPlainText";
 import { PaperNode } from "../components/PaperNode";
 import { CodeExperimentNode } from "../components/CodeExperimentNode";
 import {
@@ -81,6 +82,49 @@ function createNoteNode(
       height: 150,
     },
   };
+}
+
+function buildNodeFallbackContext(node: Node): string {
+  const data = (node.data || {}) as Record<string, unknown>;
+  if (node.type === "note" || node.id.startsWith("note")) {
+    return getEditableNodeTitle(node);
+  }
+  if (node.type === "result" || node.id.startsWith("result")) {
+    const title = typeof data.title === "string" ? data.title : "Synthesis Results";
+    const summary = typeof data.summary === "string" ? data.summary.trim() : "";
+    return summary ? `Title: ${title}\n\n${summary}` : "";
+  }
+
+  const parts: string[] = [];
+  if (typeof data.title === "string" && data.title.trim()) {
+    parts.push(`Title: ${data.title.trim()}`);
+  }
+  if (Array.isArray(data.authors) && data.authors.length > 0) {
+    parts.push(`Authors: ${data.authors.join(", ")}`);
+  }
+  if (data.year) {
+    parts.push(`Year: ${String(data.year)}`);
+  }
+  if (typeof data.publication === "string" && data.publication.trim()) {
+    parts.push(`Publication: ${data.publication.trim()}`);
+  }
+  if (typeof data.doi === "string" && data.doi.trim()) {
+    parts.push(`DOI: ${data.doi.trim()}`);
+  }
+
+  const abstract = typeof data.abstract === "string" ? data.abstract.trim() : "";
+  const summary = typeof data.summary === "string" ? data.summary.trim() : "";
+  if (abstract) {
+    parts.push(`Abstract:\n${abstract}`);
+  } else if (
+    summary &&
+    summary !== "Verified academic metadata from Discovery Hub." &&
+    !summary.startsWith("Paper indexed into ChromaDB")
+  ) {
+    parts.push(`Summary:\n${summary}`);
+  }
+
+  return parts.join("\n").trim();
 }
 
 function WorkspaceCanvas() {
@@ -206,6 +250,8 @@ function WorkspaceCanvas() {
     id: string;
     title: string;
     abstract?: string;
+    context?: string;
+    sourcePaperIds?: string[];
   } | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<
@@ -533,14 +579,43 @@ function WorkspaceCanvas() {
       (node.data?.paper_id as string) || (node.id as string) || "";
     const title = (node.data?.title || node.data?.label || "Paper") as string;
     const abstract = (node.data?.abstract as string) || "";
-    setActivePaper({ id: paperKey, title, abstract });
+    const context = buildNodeFallbackContext(node);
+
+    let sourcePaperIds: string[] | undefined;
+    if (node.type === "result" || node.id.startsWith("result")) {
+      const storedSources = Array.isArray(node.data?.sourcePaperIds)
+        ? (node.data.sourcePaperIds as string[])
+        : [];
+      if (storedSources.length > 0) {
+        sourcePaperIds = storedSources;
+      } else {
+        // Trace Synthesis Results <- Cross-Reference Task <- Source Papers on canvas
+        const synthIds = edges
+          .filter((e) => e.target === node.id)
+          .map((e) => e.source);
+        const derivedIds = edges
+          .filter((e) => synthIds.includes(e.target))
+          .map((e) => nodes.find((n) => n.id === e.source))
+          .filter((n): n is Node => n !== undefined)
+          .map((n) => (n.data?.paper_id as string) || n.id);
+        if (derivedIds.length > 0) {
+          sourcePaperIds = derivedIds;
+        }
+      }
+    }
+
+    setActivePaper({ id: paperKey, title, abstract, context, sourcePaperIds });
     selectDrawer("assistant");
     setHasUnreadNotification(false);
     setChatMessages([
       {
         sender: "agent",
         text: `Ask me anything about "${title}". You can ask about methodology, key findings, or baseline details.${
-          abstract ? " (Verified abstract context available)" : ""
+          abstract
+            ? " (Verified abstract context available)"
+            : context
+              ? " (Node context available)"
+              : ""
         }`,
       },
     ]);
@@ -567,12 +642,19 @@ function WorkspaceCanvas() {
   const handleRunSynthesis = async (synthNodeId: string) => {
     const incomingEdges = edges.filter((e) => e.target === synthNodeId);
 
-    const connectedPaperIds = incomingEdges
-      .map((edge) => {
-        const sourceNode = nodes.find((n) => n.id === edge.source);
-        return (sourceNode?.data?.paper_id as string) || edge.source;
-      })
-      .filter((id) => !id.startsWith("synth") && !id.startsWith("note"));
+    const connectedSourceNodes = incomingEdges
+      .map((edge) => nodes.find((n) => n.id === edge.source))
+      .filter((n): n is Node => n !== undefined)
+      .filter(
+        (n) =>
+          !n.id.startsWith("synth") &&
+          !n.id.startsWith("note") &&
+          !n.id.startsWith("result"),
+      );
+
+    const connectedPaperIds = connectedSourceNodes.map(
+      (sourceNode) => (sourceNode.data?.paper_id as string) || sourceNode.id,
+    );
 
     if (connectedPaperIds.length < 2) {
       alert(
@@ -580,6 +662,15 @@ function WorkspaceCanvas() {
       );
       setMenu(null);
       return;
+    }
+
+    const paperContexts: Record<string, string> = {};
+    for (const sourceNode of connectedSourceNodes) {
+      const pid = (sourceNode.data?.paper_id as string) || sourceNode.id;
+      const ctx = buildNodeFallbackContext(sourceNode);
+      if (ctx) {
+        paperContexts[pid] = ctx;
+      }
     }
 
     setMenu(null);
@@ -603,7 +694,10 @@ function WorkspaceCanvas() {
       const res = await fetch(`${BACKEND_URL}/api/agents/cross-reference`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paper_ids: connectedPaperIds }),
+        body: JSON.stringify({
+          paper_ids: connectedPaperIds,
+          paper_contexts: paperContexts,
+        }),
       });
       const data = await res.json();
 
@@ -635,6 +729,7 @@ function WorkspaceCanvas() {
           label: "⚡ Synthesis Results",
           summary: data.comparison_summary,
           paperCount: connectedPaperIds.length,
+          sourcePaperIds: connectedPaperIds,
         },
         style: {
           width: 420,
@@ -666,6 +761,7 @@ function WorkspaceCanvas() {
             label: "⚡ Synthesis Results",
             summary: data.comparison_summary,
             paperCount: connectedPaperIds.length,
+            sourcePaperIds: connectedPaperIds,
           },
         }),
       });
@@ -716,6 +812,8 @@ function WorkspaceCanvas() {
         body: JSON.stringify({
           paper_id: activePaper.id,
           query: userText,
+          fallback_context: activePaper.context,
+          source_paper_ids: activePaper.sourcePaperIds,
         }),
       });
       const data = await res.json();
@@ -943,24 +1041,24 @@ function WorkspaceCanvas() {
       )}
 
       {/* Top Header */}
-      <header className="relative z-30 h-16 shrink-0 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-sm px-6 flex items-center justify-between gap-4">
+      <header className="relative z-30 h-16 shrink-0 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-sm px-4 xl:px-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 shrink-0">
           <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-xs text-white shadow-sm">
             R
           </div>
           <span className="font-semibold text-sm text-zinc-100 tracking-tight whitespace-nowrap">
             ResearchGraph{" "}
-            <span className="text-zinc-500 font-normal">
+            <span className="hidden xl:inline text-zinc-500 font-normal">
               / Multi-Paper Workspace
             </span>
           </span>
         </div>
 
-        <div className="flex items-center gap-2.5 sm:gap-3 overflow-x-auto px-1 py-1.5">
+        <div className="flex items-center gap-2 xl:gap-2.5 overflow-x-auto no-scrollbar px-1 py-1.5 min-w-0">
           <button
             onClick={resetCanvas}
             title="Clear workspace"
-            className="flex items-center gap-2 h-[42px] px-3.5 rounded-lg bg-zinc-900/90 hover:bg-rose-950/60 active:scale-[0.98] text-[13px] font-medium text-zinc-300 hover:text-rose-300 border border-zinc-800 hover:border-rose-900/50 transition cursor-pointer select-none whitespace-nowrap shrink-0"
+            className="flex items-center gap-1.5 h-[38px] px-3 xl:px-3.5 rounded-lg bg-zinc-900/90 hover:bg-rose-950/60 active:scale-[0.98] text-xs xl:text-[13px] font-medium text-zinc-300 hover:text-rose-300 border border-zinc-800 hover:border-rose-900/50 transition cursor-pointer select-none whitespace-nowrap shrink-0"
           >
             <RotateCcw className="w-4 h-4" /> Reset
           </button>
@@ -972,7 +1070,7 @@ function WorkspaceCanvas() {
                 desiredDrawer === "discovery" ? "none" : "discovery",
               )
             }
-            className={`flex items-center gap-2 h-[42px] px-4 rounded-lg text-[13px] font-medium text-white transition cursor-pointer select-none active:scale-[0.98] shadow-sm whitespace-nowrap shrink-0 ${
+            className={`flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg text-xs xl:text-[13px] font-medium text-white transition cursor-pointer select-none active:scale-[0.98] shadow-sm whitespace-nowrap shrink-0 ${
               desiredDrawer === "discovery"
                 ? "bg-cyan-700 hover:bg-cyan-600 ring-2 ring-cyan-400/50"
                 : "bg-cyan-600 hover:bg-cyan-500"
@@ -984,14 +1082,14 @@ function WorkspaceCanvas() {
 
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 h-[42px] px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-[13px] font-medium text-white transition cursor-pointer select-none shadow-sm whitespace-nowrap shrink-0"
+            className="flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-xs xl:text-[13px] font-medium text-white transition cursor-pointer select-none shadow-sm whitespace-nowrap shrink-0"
           >
             <Plus className="w-4 h-4" /> Add Paper
           </button>
 
           <button
             onClick={handleAddSynthesisNode}
-            className="flex items-center gap-2 h-[42px] px-4 rounded-lg bg-purple-950/60 hover:bg-purple-900/60 active:scale-[0.98] text-[13px] font-medium text-purple-200 border border-purple-800/60 transition cursor-pointer select-none whitespace-nowrap shrink-0"
+            className="flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg bg-purple-950/60 hover:bg-purple-900/60 active:scale-[0.98] text-xs xl:text-[13px] font-medium text-purple-200 border border-purple-800/60 transition cursor-pointer select-none whitespace-nowrap shrink-0"
           >
             <GitFork className="w-4 h-4" /> + Cross-Reference Task
           </button>
@@ -1004,7 +1102,7 @@ function WorkspaceCanvas() {
                 createNoteNode(noteId, { x: 250, y: 150 }),
               ]);
             }}
-            className="flex items-center gap-2 h-[42px] px-4 rounded-lg bg-zinc-900 hover:bg-zinc-800/90 active:scale-[0.98] text-[13px] font-medium text-amber-300 border border-amber-900/50 transition cursor-pointer select-none whitespace-nowrap shrink-0"
+            className="flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg bg-zinc-900 hover:bg-zinc-800/90 active:scale-[0.98] text-xs xl:text-[13px] font-medium text-amber-300 border border-amber-900/50 transition cursor-pointer select-none whitespace-nowrap shrink-0"
           >
             <StickyNote className="w-4 h-4" /> + Add Note
           </button>
@@ -1016,7 +1114,7 @@ function WorkspaceCanvas() {
               );
               setHasUnreadNotification(false);
             }}
-            className={`relative flex items-center gap-2 h-[42px] px-4 rounded-lg text-[13px] font-medium text-white transition cursor-pointer select-none active:scale-[0.98] shadow-sm whitespace-nowrap shrink-0 ${
+            className={`relative flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg text-xs xl:text-[13px] font-medium text-white transition cursor-pointer select-none active:scale-[0.98] shadow-sm whitespace-nowrap shrink-0 ${
               hasUnreadNotification
                 ? "bg-amber-600 hover:bg-amber-500 animate-pulse"
                 : desiredDrawer === "assistant"
@@ -1232,10 +1330,14 @@ function WorkspaceCanvas() {
                   className={`p-3 rounded-lg leading-relaxed ${
                     msg.sender === "user"
                       ? "bg-indigo-950/60 border border-indigo-800/40 text-indigo-200 ml-4"
-                      : "bg-zinc-900 border border-zinc-800 text-zinc-300 mr-4 whitespace-pre-wrap"
+                      : "bg-zinc-900 border border-zinc-800 text-zinc-300 mr-4"
                   }`}
                 >
-                  {msg.text}
+                  {msg.sender === "agent" ? (
+                    <FormattedPlainText text={msg.text} />
+                  ) : (
+                    msg.text
+                  )}
                 </div>
               ))
             )}
