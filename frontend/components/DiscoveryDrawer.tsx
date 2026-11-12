@@ -60,8 +60,6 @@ export function DiscoveryDrawer({
   const [warnings, setWarnings] = useState<string[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
 
-  if (!isOpen) return null;
-
   const toggleAbstract = (id: string) => {
     setExpandedAbstracts((prev) => ({
       ...prev,
@@ -132,7 +130,15 @@ export function DiscoveryDrawer({
   };
 
   return (
-    <aside className="fixed top-16 right-0 bottom-0 w-[540px] max-w-full z-40 bg-zinc-950/98 backdrop-blur-md border-l border-zinc-800 flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
+    <aside
+      aria-hidden={!isOpen}
+      inert={!isOpen}
+      className={`absolute top-0 right-0 bottom-0 w-[540px] max-w-full z-30 bg-zinc-950/95 backdrop-blur-md border-l border-zinc-800 flex flex-col shadow-2xl transform transition-[transform,opacity] duration-200 ease-in-out ${
+        isOpen
+          ? "translate-x-0 opacity-100 pointer-events-auto"
+          : "translate-x-full opacity-0 pointer-events-none"
+      }`}
+    >
       {/* Drawer Header */}
       <div className="h-16 px-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/90 shrink-0">
         <div className="flex items-center gap-3">
@@ -434,7 +440,7 @@ export function DiscoveryDrawer({
                       )}
                     </button>
                     {isExpanded && (
-                      <div className="mt-2 p-3 rounded-lg bg-zinc-950 border border-zinc-800/90 text-xs text-zinc-300 leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap select-text">
+                      <div className="mt-2 p-3 rounded-lg bg-zinc-950 border border-zinc-800/90 text-xs text-zinc-300 leading-relaxed max-h-52 overflow-y-auto overscroll-contain touch-pan-y node-scrollbar whitespace-pre-wrap select-text">
                         {paper.abstract}
                       </div>
                     )}
