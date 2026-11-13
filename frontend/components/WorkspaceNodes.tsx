@@ -8,8 +8,11 @@ export interface WorkspaceNodeData {
   title?: string;
   label?: string;
   summary?: string;
+  gaps?: string;
   paperCount?: number;
   analyzingCount?: number;
+  taskMode?: "comparison" | "gaps";
+  onModeChange?: (mode: "comparison" | "gaps") => void;
   [key: string]: unknown;
 }
 
@@ -59,34 +62,121 @@ export function SynthesisTaskNode({
 }) {
   const isAnalyzing =
     typeof data.analyzingCount === "number" && data.analyzingCount > 0;
+  const taskMode = (data.taskMode as "comparison" | "gaps") || "comparison";
 
   return (
     <ResizableNodeFrame
       selected={selected}
-      minWidth={240}
-      minHeight={110}
-      accentColor="#c084fc"
-      handleClassName="!bg-purple-500 !w-3 !h-3 !border-2 !border-zinc-950"
-      className="rounded-[10px] border border-dashed border-purple-600 bg-zinc-900 p-3.5 shadow-xl text-left"
+      minWidth={260}
+      minHeight={150}
+      accentColor={taskMode === "gaps" ? "#f59e0b" : "#c084fc"}
+      handleClassName={`!w-3 !h-3 !border-2 !border-zinc-950 ${taskMode === "gaps" ? "!bg-amber-500" : "!bg-purple-500"}`}
+      className={`rounded-[10px] border border-dashed bg-zinc-900 p-3.5 shadow-xl text-left transition-colors ${
+        taskMode === "gaps" ? "border-amber-600" : "border-purple-600"
+      }`}
     >
-      <div className="font-semibold text-xs text-purple-300 flex items-center gap-2 shrink-0 cursor-grab active:cursor-grabbing pb-1.5 border-b border-purple-800/40">
+      <div
+        className={`font-semibold text-xs flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing pb-1.5 border-b ${
+          taskMode === "gaps"
+            ? "text-amber-300 border-amber-800/40"
+            : "text-purple-300 border-purple-800/40"
+        }`}
+      >
         {isAnalyzing ? (
-          <>
-            <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping shrink-0" />
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-2 h-2 rounded-full animate-ping shrink-0 ${
+                taskMode === "gaps" ? "bg-amber-400" : "bg-purple-400"
+              }`}
+            />
             <span>Analyzing {data.analyzingCount} papers...</span>
-          </>
+          </div>
         ) : (
           <span className="truncate">
-            🔍 {data.title || "Cross-Reference Task"}
+            {taskMode === "gaps" ? "🔍 Research Gap Task" : "📋 Cross-Reference Task"}
           </span>
         )}
       </div>
 
+      {/* Mode Switcher Pill */}
+      <div className="mt-2 flex items-center p-0.5 rounded-lg bg-zinc-950/90 border border-zinc-800 text-[10px] shrink-0 nodrag">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (typeof data.onModeChange === "function") {
+              data.onModeChange("comparison");
+            }
+          }}
+          className={`flex-1 py-1 px-2 rounded-md font-medium transition cursor-pointer text-center ${
+            taskMode === "comparison"
+              ? "bg-purple-900/80 text-purple-200 border border-purple-700/60 shadow-sm"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          📋 Compare
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (typeof data.onModeChange === "function") {
+              data.onModeChange("gaps");
+            }
+          }}
+          className={`flex-1 py-1 px-2 rounded-md font-medium transition cursor-pointer text-center ${
+            taskMode === "gaps"
+              ? "bg-amber-950/80 text-amber-200 border border-amber-700/60 shadow-sm"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          🔍 Gaps
+        </button>
+      </div>
+
       <ScrollableNodeBody className="mt-2 pr-1">
         <p className="text-[11px] text-zinc-400 font-normal leading-snug">
-          Connect 2 or more papers into this node, right-click, and select
-          &quot;Run Cross-Reference&quot;.
+          {taskMode === "gaps"
+            ? 'Connect 2+ papers, right-click, and run "Discover Research Gaps".'
+            : 'Connect 2+ papers, right-click, and run "Run Cross-Reference".'}
         </p>
+      </ScrollableNodeBody>
+    </ResizableNodeFrame>
+  );
+}
+
+export function ResearchGapNode({
+  data,
+  selected,
+}: {
+  data: WorkspaceNodeData;
+  selected?: boolean;
+}) {
+  return (
+    <ResizableNodeFrame
+      selected={selected}
+      minWidth={320}
+      minHeight={220}
+      accentColor="#f59e0b"
+      handleClassName="!bg-amber-500 !w-3 !h-3 !border-2 !border-zinc-950"
+      className="rounded-[10px] border border-amber-600 bg-zinc-900 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.6)] text-left"
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-amber-500/30 pb-2 shrink-0 cursor-grab active:cursor-grabbing">
+        <span className="font-bold text-xs text-amber-300 truncate">
+          🔍 {data.title || "Research Gap Discovery"}
+        </span>
+        {typeof data.paperCount === "number" && (
+          <span className="shrink-0 text-[10px] font-medium text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800/80">
+            {data.paperCount} Papers Analyzed
+          </span>
+        )}
+      </div>
+
+      <ScrollableNodeBody className="mt-2.5 pr-1">
+        <FormattedPlainText
+          text={data.summary || data.gaps || "No research gaps identified yet."}
+          className="text-[11px] text-zinc-200 font-normal leading-relaxed break-words"
+        />
       </ScrollableNodeBody>
     </ResizableNodeFrame>
   );

@@ -42,19 +42,23 @@ def delete_paper_chunks(paper_id: str) -> None:
         print(f"ChromaDB Delete Error for {clean_id}: {e}")
 
 
-def clear_vector_store() -> None:
-    """Remove all indexed documents from the ChromaDB collection."""
+def clear_vector_store(project_id: str = None) -> None:
+    """Remove indexed documents from ChromaDB. If project_id is given, removes only that workspace's vectors."""
     try:
-        existing = collection.get(include=[])
-        ids = existing.get("ids") if existing else None
-        if ids:
-            collection.delete(ids=ids)
+        if project_id and project_id.strip():
+            collection.delete(where={"project_id": project_id.strip()})
+        else:
+            existing = collection.get(include=[])
+            ids = existing.get("ids") if existing else None
+            if ids:
+                collection.delete(ids=ids)
     except Exception as e:
         print(f"ChromaDB Clear Error: {e}")
 
 
-def index_paper_chunks(paper_id: str, chunks: list[str]) -> None:
+def index_paper_chunks(paper_id: str, chunks: list[str], project_id: str = "default") -> None:
     clean_id = (paper_id or "").strip()
+    clean_pid = (project_id or "default").strip()
     valid_chunks = [c for c in chunks if c and c.strip()]
     if not clean_id or not valid_chunks:
         return
@@ -65,6 +69,7 @@ def index_paper_chunks(paper_id: str, chunks: list[str]) -> None:
         {
             "paper_id": clean_id,
             "chunk_index": i,
+            "project_id": clean_pid,
         }
         for i in range(len(valid_chunks))
     ]
@@ -75,12 +80,12 @@ def index_paper_chunks(paper_id: str, chunks: list[str]) -> None:
     )
 
 
-def index_paper_text(paper_id: str, text: str) -> int:
+def index_paper_text(paper_id: str, text: str, project_id: str = "default") -> int:
     """Chunk and index raw text for a paper or workspace node. Returns chunk count."""
     chunks = chunk_text(text)
     if not chunks:
         return 0
-    index_paper_chunks(paper_id=paper_id, chunks=chunks)
+    index_paper_chunks(paper_id=paper_id, chunks=chunks, project_id=project_id)
     return len(chunks)
 
 
