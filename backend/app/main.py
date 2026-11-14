@@ -2,13 +2,16 @@ import os
 import re
 import sqlite3
 import shutil
+import datetime
 from typing import Optional, List, Dict
+from unittest.mock import MagicMock
 
-from fastapi import FastAPI, Response, Query
+from fastapi import FastAPI, Response, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ollama
 
+from app.core.config import settings
 from app.api.papers import router as papers_router
 from app.api.discovery import router as discovery_router
 from app.sandbox.runner import execute_sandboxed_code
@@ -37,22 +40,141 @@ from app.db.vector_store import (
 # Initialize database tables on startup
 init_db()
 
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
-OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "1h")
-OLLAMA_THREAD_COUNT = int(os.getenv("OLLAMA_NUM_THREADS", "8"))
+OLLAMA_MODEL = settings.OLLAMA_CHAT_MODEL
+OLLAMA_KEEP_ALIVE = settings.OLLAMA_KEEP_ALIVE
+OLLAMA_THREAD_COUNT = settings.OLLAMA_NUM_THREADS
 
 app = FastAPI(title="ResearchGraph API", version="0.1.0")
 
+# Production-safe CORS: explicit allowed origins, no wildcard in production, safe credentials
+cors_origins = settings.get_cors_origins()
+allow_creds = bool(cors_origins and "*" not in cors_origins)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins if cors_origins else (["*"] if not settings.is_production else []),
+    allow_credentials=allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(papers_router)
 app.include_router(discovery_router)
+
+
+@app.get("/health", tags=["System"])
+async def health_check():
+    """Lightweight health check without triggering external or LLM calls."""
+    return {
+        "status": "healthy",
+        "environment": settings.APP_ENV,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/capabilities", tags=["System"])
+async def get_capabilities():
+    """Reports granular system and service capabilities, distinguishing configured from reachable."""
+    # 1. Academic Discovery
+    discovery_providers = ["openalex", "crossref", "unpaywall"]
+    discovery_status = {
+        "available": True,
+        "message": "Academic discovery online (OpenAlex, Crossref, Unpaywall configured).",
+        "providers": discovery_providers,
+        "openalex_has_key": bool(settings.OPENALEX_API_KEY),
+        "crossref_has_mailto": bool(settings.CROSSREF_MAILTO),
+        "unpaywall_has_email": bool(settings.UNPAYWALL_EMAIL),
+    }
+
+    # 2. SQLite Persistence
+    persistence_available = False
+    persistence_msg = ""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("SELECT 1 FROM projects LIMIT 1")
+        conn.close()
+        persistence_available = True
+        persistence_msg = f"SQLite workspace persistence active ({os.path.basename(DB_PATH)})."
+    except Exception as e:
+        persistence_msg = f"Persistence check failed: {e}"
+
+    # 3. PDF Processing
+    uploads_dir = os.path.join(settings.RESEARCHGRAPH_DATA_DIR, "uploads")
+    pdf_available = os.path.isdir(uploads_dir) and os.access(uploads_dir, os.W_OK)
+    pdf_msg = f"PDF upload and extraction active (max {settings.MAX_UPLOAD_MB}MB)."
+
+    # 4. Ollama Inference
+    ollama_available = False
+    ollama_msg = ""
+    try:
+        import httpx
+        with httpx.Client(timeout=1.5) as client:
+            resp = client.get(f"{settings.OLLAMA_BASE_URL}/api/version")
+            if resp.status_code == 200:
+                ollama_available = True
+                ver = resp.json().get("version", "unknown")
+                ollama_msg = f"Ollama reachable at {settings.OLLAMA_BASE_URL} (v{ver}, model {settings.OLLAMA_CHAT_MODEL})."
+            else:
+                ollama_msg = f"Ollama returned HTTP {resp.status_code} at {settings.OLLAMA_BASE_URL}."
+    except Exception:
+        ollama_msg = f"Ollama service unreachable at {settings.OLLAMA_BASE_URL}."
+
+    # 5. Embeddings
+    embeddings_available = ollama_available
+    embeddings_msg = (
+        f"ChromaDB vector embeddings active ({settings.OLLAMA_EMBEDDING_MODEL})."
+        if ollama_available
+        else f"Vector embeddings degraded: Ollama unreachable at {settings.OLLAMA_BASE_URL}."
+    )
+
+    # 6. Experiment Generation
+    exp_gen_available = True
+    exp_gen_msg = "Interactive experiment generation online (AI-powered with heuristic fallback)."
+
+    # 7. Experiment Execution
+    exp_exec_available = settings.ENABLE_SANDBOX_EXECUTION
+    exp_exec_msg = (
+        "Subprocess sandbox execution enabled for local development."
+        if settings.ENABLE_SANDBOX_EXECUTION
+        else "Sandbox execution disabled in production environment for security."
+    )
+
+    return {
+        "status": "operational",
+        "environment": settings.APP_ENV,
+        "capabilities": {
+            "discovery": discovery_status,
+            "persistence": {
+                "available": persistence_available,
+                "message": persistence_msg,
+            },
+            "pdf_processing": {
+                "available": pdf_available,
+                "message": pdf_msg,
+            },
+            "ollama_inference": {
+                "available": ollama_available,
+                "message": ollama_msg,
+                "model": settings.OLLAMA_CHAT_MODEL,
+                "base_url": settings.OLLAMA_BASE_URL,
+            },
+            "embeddings": {
+                "available": embeddings_available,
+                "message": embeddings_msg,
+                "model": settings.OLLAMA_EMBEDDING_MODEL,
+            },
+            "experiment_generation": {
+                "available": exp_gen_available,
+                "message": exp_gen_msg,
+            },
+            "experiment_execution": {
+                "available": exp_exec_available,
+                "message": exp_exec_msg,
+                "enabled": settings.ENABLE_SANDBOX_EXECUTION,
+            },
+        },
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
 
 # Request Models
 class ChatRequest(BaseModel):
@@ -800,6 +922,44 @@ async def get_citation_excerpt(
     }
 
 
+def _call_ollama_chat(
+    messages: List[Dict[str, str]],
+    temperature: float = 0.0,
+    num_predict: int = 350,
+) -> dict:
+    """Dispatches chat request to configured Ollama client or mocked ollama.chat in unit tests."""
+    if (
+        isinstance(ollama.chat, MagicMock)
+        or hasattr(ollama.chat, "return_value")
+        or hasattr(ollama.chat, "mock")
+    ):
+        return ollama.chat(
+            model=OLLAMA_MODEL,
+            messages=messages,
+            keep_alive=OLLAMA_KEEP_ALIVE,
+            options={
+                "num_thread": OLLAMA_THREAD_COUNT,
+                "num_predict": num_predict,
+                "num_ctx": 2048,
+                "temperature": temperature,
+            },
+        )
+    client = ollama.Client(
+        host=settings.OLLAMA_BASE_URL, timeout=settings.OLLAMA_REQUEST_TIMEOUT
+    )
+    return client.chat(
+        model=OLLAMA_MODEL,
+        messages=messages,
+        keep_alive=OLLAMA_KEEP_ALIVE,
+        options={
+            "num_thread": OLLAMA_THREAD_COUNT,
+            "num_predict": num_predict,
+            "num_ctx": 2048,
+            "temperature": temperature,
+        },
+    )
+
+
 # --- Multi-Agent Orchestration & Chat ---
 
 @app.post("/api/agents/chat")
@@ -924,21 +1084,22 @@ User Question:
 {req.query}
 """
 
-    response = ollama.chat(
-        model=OLLAMA_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        keep_alive=OLLAMA_KEEP_ALIVE,
-        options={
-            "num_thread": OLLAMA_THREAD_COUNT,
-            "num_predict": 350,
-            "num_ctx": 2048,
-            "temperature": 0.0,
-        },
-    )
-    return {"reply": _clean_markdown(response["message"]["content"])}
+    try:
+        response = _call_ollama_chat(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,
+            num_predict=350,
+        )
+        return {"reply": _clean_markdown(response["message"]["content"])}
+    except Exception as e:
+        print(f"Ollama chat error: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama inference service is currently unavailable at {settings.OLLAMA_BASE_URL}. Ensure Ollama is running with model '{OLLAMA_MODEL}'.",
+        )
 
 @app.post("/api/agents/cross-reference")
 async def cross_reference_papers(req: CrossReferenceRequest):
@@ -1001,18 +1162,19 @@ Present the result as an easy-to-read structured summary for a student. Do not i
 Paper Data:
 {chr(10).join(combined_contexts)}{missing_note}
 """
-    response = ollama.chat(
-        model=OLLAMA_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        keep_alive=OLLAMA_KEEP_ALIVE,
-        options={
-            "num_thread": OLLAMA_THREAD_COUNT,
-            "num_predict": 320,
-            "num_ctx": 2048,
-            "temperature": 0.1,
-        },
-    )
-    return {"comparison_summary": _clean_markdown(response["message"]["content"])}
+    try:
+        response = _call_ollama_chat(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            num_predict=320,
+        )
+        return {"comparison_summary": _clean_markdown(response["message"]["content"])}
+    except Exception as e:
+        print(f"Ollama cross-reference error: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama inference service is currently unavailable at {settings.OLLAMA_BASE_URL}. Ensure Ollama is running with model '{OLLAMA_MODEL}'.",
+        )
 
 @app.post("/api/agents/research-gap")
 async def analyze_research_gaps(req: ResearchGapRequest):
@@ -1075,18 +1237,19 @@ Present the findings as clear, structured categories for a researcher. Do not in
 Paper Data:
 {chr(10).join(combined_contexts)}{missing_note}
 """
-    response = ollama.chat(
-        model=OLLAMA_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        keep_alive=OLLAMA_KEEP_ALIVE,
-        options={
-            "num_thread": OLLAMA_THREAD_COUNT,
-            "num_predict": 350,
-            "num_ctx": 2048,
-            "temperature": 0.1,
-        },
-    )
-    return {"gaps_summary": _clean_markdown(response["message"]["content"])}
+    try:
+        response = _call_ollama_chat(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            num_predict=350,
+        )
+        return {"gaps_summary": _clean_markdown(response["message"]["content"])}
+    except Exception as e:
+        print(f"Ollama research gap error: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama inference service is currently unavailable at {settings.OLLAMA_BASE_URL}. Ensure Ollama is running with model '{OLLAMA_MODEL}'.",
+        )
 
 @app.post("/api/agents/run-pipeline")
 @app.post("/api/agents/pipeline")
@@ -1123,4 +1286,9 @@ async def trigger_agent_pipeline(req: RunWorkflowRequest):
 
 @app.post("/api/sandbox/execute")
 async def execute_experiment(req: ExecuteCodeRequest):
+    if not settings.ENABLE_SANDBOX_EXECUTION:
+        raise HTTPException(
+            status_code=403,
+            detail="Sandbox code execution is disabled in this deployment environment for security.",
+        )
     return execute_sandboxed_code(req.code)

@@ -22,6 +22,7 @@ import {
   ChevronRight,
   RefreshCw,
 } from "lucide-react";
+import { getBackendUrl } from "../lib/api";
 
 interface ExperimentModalProps {
   isOpen: boolean;
@@ -88,8 +89,7 @@ const HEAD_TAGS = [
   { label: "16 Heads", value: 16 },
 ];
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+const BACKEND_URL = getBackendUrl();
 
 type ConsoleTab = "results" | "code" | "terminal" | "diagnostics";
 
@@ -257,6 +257,22 @@ export function ExperimentModal({
 
   const handleExecuteSandbox = async () => {
     if (!editableCode.trim()) return;
+    if (!BACKEND_URL) {
+      setExecutionResult({
+        status: "failed",
+        stdout: "",
+        stderr: "Backend URL is not configured. Please set NEXT_PUBLIC_BACKEND_URL in your deployment environment.",
+        latency_ms: 0,
+        metrics: {
+          latency: "0ms",
+          primary_metric: "Unconfigured",
+          summary: "Backend URL not configured.",
+        },
+      });
+      setPipelineStage(4);
+      setActiveConsoleTab("terminal");
+      return;
+    }
     setIsExecuting(true);
     setExecutionResult(null);
     setPipelineStage(3);
@@ -267,6 +283,23 @@ export function ExperimentModal({
         body: JSON.stringify({ code: editableCode }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        const detailMsg = data.detail || `Execution failed with HTTP ${res.status}`;
+        setExecutionResult({
+          status: "failed",
+          stdout: "",
+          stderr: detailMsg,
+          latency_ms: 0,
+          metrics: {
+            latency: "0ms",
+            primary_metric: res.status === 403 ? "Execution Disabled" : "Failed",
+            summary: detailMsg,
+          },
+        });
+        setPipelineStage(4);
+        setActiveConsoleTab("terminal");
+        return;
+      }
       const isPassed =
         (data.status === "success" || data.status === "passed" || data.passed === true) &&
         (!data.stderr || data.stderr.trim() === "");

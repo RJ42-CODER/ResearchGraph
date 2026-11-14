@@ -1,10 +1,15 @@
+import os
 import chromadb
 from chromadb.utils import embedding_functions
+from app.core.config import settings
 
-client = chromadb.PersistentClient(path="./data/chroma_db")
+_CHROMA_PATH = os.path.join(settings.RESEARCHGRAPH_DATA_DIR, "chroma_db")
+os.makedirs(_CHROMA_PATH, exist_ok=True)
+
+client = chromadb.PersistentClient(path=_CHROMA_PATH)
 embedding_func = embedding_functions.OllamaEmbeddingFunction(
-    url="http://localhost:11434/api/embeddings",
-    model_name="nomic-embed-text",
+    url=f"{settings.OLLAMA_BASE_URL}/api/embeddings",
+    model_name=settings.OLLAMA_EMBEDDING_MODEL,
 )
 
 collection = client.get_or_create_collection(
@@ -73,11 +78,14 @@ def index_paper_chunks(paper_id: str, chunks: list[str], project_id: str = "defa
         }
         for i in range(len(valid_chunks))
     ]
-    collection.upsert(
-        documents=valid_chunks,
-        ids=ids,
-        metadatas=metadata,
-    )
+    try:
+        collection.upsert(
+            documents=valid_chunks,
+            ids=ids,
+            metadatas=metadata,
+        )
+    except Exception as e:
+        print(f"ChromaDB Index Error for paper {clean_id}: {e}")
 
 
 def index_paper_text(paper_id: str, text: str, project_id: str = "default") -> int:

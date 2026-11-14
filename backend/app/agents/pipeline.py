@@ -5,13 +5,22 @@ from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.sandbox.runner import execute_sandboxed_code
+from app.core.config import settings
 
-# Connect to local Ollama instance running on port 11434
-llm = ChatOllama(
-    base_url="http://localhost:11434",
-    model="llama3.2:3b",
-    temperature=0.1
-)
+def get_llm():
+    """Initializes a ChatOllama client configured from environment settings with timeout."""
+    return ChatOllama(
+        base_url=settings.OLLAMA_BASE_URL,
+        model=settings.OLLAMA_CHAT_MODEL,
+        temperature=0.1,
+        num_thread=settings.OLLAMA_NUM_THREADS,
+        keep_alive=settings.OLLAMA_KEEP_ALIVE,
+        sync_client_kwargs={"timeout": settings.OLLAMA_REQUEST_TIMEOUT},
+        async_client_kwargs={"timeout": settings.OLLAMA_REQUEST_TIMEOUT},
+    )
+
+# Connect to configurable Ollama instance with timeout
+llm = get_llm()
 
 class ResearchAgentState(TypedDict):
     paper_text: str

@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: researchgraph-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # Core configuration – adjust per deployment
+      APP_ENV: production
+      OLLAMA_BASE_URL: ""                 # empty → Ollama disabled on Render
+      OLLAMA_CHAT_MODEL: llama3.2:3b
+      OLLAMA_EMBEDDING_MODEL: nomic-embed-text
+      OLLAMA_NUM_THREADS: "4"
+      OLLAMA_KEEP_ALIVE: "300"
+      # Academic API keys (optional, **do not** commit real keys)
+      OPENALEX_API_KEY: ""
+      CROSSREF_MAILTO: ""
+      UNPAYWALL_EMAIL: ""
+      # CORS – add your Vercel domain(s) here, comma‑separated
+      CORS_ORIGINS: "https://<your‑project>.vercel.app"
+      # Sandbox execution guard – keep disabled in prod
+      ENABLE_SANDBOX_EXECUTION: "false"
+      # Upload / PDF limits
+      MAX_UPLOAD_MB: "50"
+      # Persistent storage (Render free tier provides an *ephemeral* /tmp volume)
+      RESEARCHGRAPH_DATA_DIR: "/data"
+    autoDeploy: true
+    healthCheckPath: /health
+    # Render free tier note – storage not persisted across restarts
+    disk:
+      mountPath: /data
+      sizeGB: 1
+    # Optional: indicate you are using a free plan
+    plan: free

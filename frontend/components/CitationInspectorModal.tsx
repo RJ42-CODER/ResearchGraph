@@ -12,6 +12,7 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
+import { getBackendUrl } from "../lib/api";
 
 export interface CitationPayload {
   paperId: string;
@@ -36,7 +37,7 @@ export function CitationInspectorModal({
   onClose,
   citation,
   onFocusNode,
-  backendUrl = "http://localhost:8000",
+  backendUrl = getBackendUrl(),
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -62,6 +63,9 @@ export function CitationInspectorModal({
 
     const fetchExcerpt = async () => {
       try {
+        if (!backendUrl) {
+          throw new Error("Backend URL is not configured. Please set NEXT_PUBLIC_BACKEND_URL.");
+        }
         const cleanPage = citation.page || "1";
         const res = await fetch(
           `${backendUrl}/api/papers/citation-excerpt?paper_id=${encodeURIComponent(

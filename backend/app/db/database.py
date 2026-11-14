@@ -3,10 +3,9 @@ import json
 import os
 import uuid
 from typing import Optional, List, Dict, Any
+from app.core.config import settings
 
-_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-_BACKEND_DIR = os.path.dirname(os.path.dirname(_CURRENT_DIR))
-_DATA_DIR = os.path.join(_BACKEND_DIR, "data")
+_DATA_DIR = settings.RESEARCHGRAPH_DATA_DIR
 os.makedirs(_DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(_DATA_DIR, "research_graph.db")
 

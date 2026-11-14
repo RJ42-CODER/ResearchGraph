@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Node } from "@xyflow/react";
+import { getBackendUrl } from "../lib/api";
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -30,7 +31,7 @@ export function ExportModal({
   activeProjectId,
   activeProjectName,
   nodes,
-  backendUrl = "http://localhost:8000",
+  backendUrl = getBackendUrl(),
   onExportSuccess,
 }: ExportModalProps) {
   const [downloadingFormat, setDownloadingFormat] = useState<
@@ -96,26 +97,28 @@ export function ExportModal({
       .replace(/[\s\-]+/g, "_");
 
     try {
-      // 1. Try server-side export first
-      const res = await fetch(
-        `${backendUrl}/api/workspace/export?project_id=${encodeURIComponent(
-          activeProjectId
-        )}&format=${format}`
-      );
+      // 1. Try server-side export first if backend is configured
+      if (backendUrl) {
+        const res = await fetch(
+          `${backendUrl}/api/workspace/export?project_id=${encodeURIComponent(
+            activeProjectId
+          )}&format=${format}`
+        );
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.content && data.filename) {
-          triggerDownload(
-            data.filename,
-            data.content,
-            format === "bibtex" ? "application/x-bibtex" : "text/markdown"
-          );
-          onExportSuccess(
-            `Exported ${format === "bibtex" ? "BibTeX" : "Markdown"} dossier successfully!`
-          );
-          onClose();
-          return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.content && data.filename) {
+            triggerDownload(
+              data.filename,
+              data.content,
+              format === "bibtex" ? "application/x-bibtex" : "text/markdown"
+            );
+            onExportSuccess(
+              `Exported ${format === "bibtex" ? "BibTeX" : "Markdown"} dossier successfully!`
+            );
+            onClose();
+            return;
+          }
         }
       }
       throw new Error("Server export returned empty content");

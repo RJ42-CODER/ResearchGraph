@@ -18,6 +18,7 @@ import {
   Unlock,
   Layers,
 } from "lucide-react";
+import { getBackendUrl } from "../lib/api";
 
 export interface DiscoveredPaperItem {
   id: string;
@@ -41,7 +42,7 @@ interface DiscoveryDrawerProps {
   onClose: () => void;
   onAddPaper: (paper: DiscoveredPaperItem) => void;
   existingPaperKeys: Set<string>;
-  backendUrl: string;
+  backendUrl?: string;
 }
 
 export function DiscoveryDrawer({
@@ -49,7 +50,7 @@ export function DiscoveryDrawer({
   onClose,
   onAddPaper,
   existingPaperKeys,
-  backendUrl,
+  backendUrl = getBackendUrl(),
 }: DiscoveryDrawerProps) {
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState("all");
@@ -78,6 +79,11 @@ export function DiscoveryDrawer({
     setHasSearched(true);
 
     try {
+      if (!backendUrl) {
+        throw new Error(
+          "Backend URL is not configured. Please set NEXT_PUBLIC_BACKEND_URL in your deployment environment."
+        );
+      }
       // Auto-detect DOI lookup if query looks like a DOI
       const isDoi = /^10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+$/i.test(trimmed) || trimmed.startsWith("doi:");
       let url: string;
