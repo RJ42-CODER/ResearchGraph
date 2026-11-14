@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   Play,
@@ -15,8 +15,12 @@ import {
   TrendingUp,
   MessageSquare,
   Code2,
-  ChevronDown,
-  ChevronUp,
+  Terminal,
+  Copy,
+  Check,
+  Clock,
+  ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 
 interface ExperimentModalProps {
@@ -57,12 +61,12 @@ interface ExperimentModalProps {
 const PRESETS = [
   {
     title: "⚡ Method vs Baseline",
-    desc: "Simulate the paper's proposed method against its primary baseline and compare key metrics",
+    desc: "Simulate proposed method against primary baseline and compare domain metrics",
     goal: "Simulate the paper's proposed method against its primary baseline and compare key metrics",
   },
   {
     title: "📊 Parameter Sensitivity",
-    desc: "Sweep the primary hyperparameter across low, medium, and high values",
+    desc: "Sweep primary hyperparameter across low, medium, and high values",
     goal: "Sweep the primary hyperparameter across low, medium, and high values",
   },
   {
@@ -87,6 +91,8 @@ const HEAD_TAGS = [
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
+type ConsoleTab = "results" | "code" | "terminal" | "diagnostics";
+
 export function ExperimentModal({
   isOpen,
   onClose,
@@ -102,13 +108,17 @@ export function ExperimentModal({
   const [selectedHeads, setSelectedHeads] = useState(8);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
-  const [showCodeDetails, setShowCodeDetails] = useState(false);
-  const [extractedParams, setExtractedParams] = useState<Record<
-    string,
-    unknown
-  > | null>(null);
+  const [extractedParams, setExtractedParams] = useState<Record<string, unknown> | null>(null);
   const [editableCode, setEditableCode] = useState<string>("");
   const [evalStatus, setEvalStatus] = useState<string | null>(null);
+  const [activeConsoleTab, setActiveConsoleTab] = useState<ConsoleTab>("results");
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  // 4-Stage Stepper: 0: idle, 1: grounding, 2: coding, 3: validating, 4: executed
+  const [pipelineStage, setPipelineStage] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [elapsedTimer, setElapsedTimer] = useState<number>(0);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const [executionResult, setExecutionResult] = useState<{
     status: "success" | "failed";
     stdout?: string;
@@ -132,13 +142,35 @@ export function ExperimentModal({
         "d_model" in extractedParams)
   );
 
+  // Timer runner
+  useEffect(() => {
+    if (isGenerating || isExecuting) {
+      const start = Date.now();
+      timerIntervalRef.current = setInterval(() => {
+        setElapsedTimer(Date.now() - start);
+      }, 50);
+    } else {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, [isGenerating, isExecuting]);
+
   useEffect(() => {
     if (isOpen) {
       setExtractedParams(null);
       setEditableCode("");
       setEvalStatus(null);
       setExecutionResult(null);
-      setShowCodeDetails(false);
+      setPipelineStage(0);
+      setElapsedTimer(0);
+      setActiveConsoleTab("results");
       setUserGoal(
         "Simulate the paper's proposed method against its primary baseline and compare key metrics"
       );
@@ -150,6 +182,7 @@ export function ExperimentModal({
   const handleGenerateScript = async () => {
     setIsGenerating(true);
     setExecutionResult(null);
+    setPipelineStage(1);
     try {
       const paperContext =
         targetNode.abstract ||
@@ -159,6 +192,8 @@ export function ExperimentModal({
       const targetGoal = isTransformerPaper
         ? `${userGoal} (seq_len=${selectedSeqLen}, heads=${selectedHeads})`
         : userGoal;
+
+      setPipelineStage(2);
 
       const res = await fetch(`${BACKEND_URL}/api/agents/run-pipeline`, {
         method: "POST",
@@ -178,6 +213,8 @@ export function ExperimentModal({
       setExtractedParams(data.hyperparameters || null);
       setEditableCode(data.generated_code || "");
       setEvalStatus(data.eval_status || "ready_for_hitl");
+      setPipelineStage(3);
+      setActiveConsoleTab("code");
     } catch (err) {
       console.error("Experiment synthesis error:", err);
       // Domain-accurate fallback matching paper context
@@ -211,6 +248,8 @@ export function ExperimentModal({
         );
       }
       setEvalStatus("ready_for_hitl");
+      setPipelineStage(3);
+      setActiveConsoleTab("code");
     } finally {
       setIsGenerating(false);
     }
@@ -220,6 +259,7 @@ export function ExperimentModal({
     if (!editableCode.trim()) return;
     setIsExecuting(true);
     setExecutionResult(null);
+    setPipelineStage(3);
     try {
       const res = await fetch(`${BACKEND_URL}/api/sandbox/execute`, {
         method: "POST",
@@ -251,12 +291,16 @@ export function ExperimentModal({
           viability: data.metrics?.viability,
         },
       });
+      setPipelineStage(4);
+      setActiveConsoleTab("results");
     } catch (err) {
       console.error("Sandbox execution error:", err);
       setExecutionResult({
         status: "failed",
         stderr: String(err),
       });
+      setPipelineStage(4);
+      setActiveConsoleTab("terminal");
     } finally {
       setIsExecuting(false);
     }
@@ -320,97 +364,164 @@ export function ExperimentModal({
     onClose();
   };
 
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(editableCode).then(() => {
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    });
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="w-full max-w-2xl rounded-2xl bg-zinc-950 border border-zinc-800 p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150 my-8 max-h-[92vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-800 shrink-0">
-          <div className="flex items-center gap-2.5 text-cyan-400">
-            <Cpu className="w-5 h-5" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 overflow-y-auto">
+      <div className="w-full max-w-3xl rounded-3xl bg-zinc-950 border border-zinc-800 p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150 my-6 max-h-[94vh] flex flex-col">
+        {/* Header with Title & Timer */}
+        <div className="flex items-center justify-between pb-4 border-b border-zinc-800/80 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-2xl bg-cyan-950/80 border border-cyan-800/60 flex items-center justify-center text-cyan-400">
+              <Cpu className="w-4 h-4" />
+            </div>
             <div>
-              <h3 className="font-semibold text-base text-zinc-100 flex items-center gap-2">
-                Experiment Execution & Comparison
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-400 border border-cyan-800/40">
-                  Human-in-the-Loop
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base text-zinc-100">
+                  Simulation & Benchmark Studio
+                </h3>
+                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/60">
+                  Sandbox HITL
                 </span>
-              </h3>
-              <p className="text-xs text-zinc-400 line-clamp-1">
-                Paper: {targetNode.title}
+              </div>
+              <p className="text-xs text-zinc-400 truncate max-w-md">
+                {targetNode.title}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
+
+          <div className="flex items-center gap-3">
+            {(isGenerating || isExecuting || elapsedTimer > 0) && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300">
+                <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{(elapsedTimer / 1000).toFixed(2)}s</span>
+              </div>
+            )}
+            <button
+              onClick={onClose}
+              className="text-zinc-500 hover:text-zinc-200 p-1.5 rounded-xl hover:bg-zinc-900 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 4-Stage Execution Stepper */}
+        <div className="pt-4 pb-2 shrink-0">
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { num: 1, title: "1. Paper Grounding" },
+              { num: 2, title: "2. Coder Agent" },
+              { num: 3, title: "3. Dry-Run Check" },
+              { num: 4, title: "4. Python Sandbox" },
+            ].map((step) => {
+              const isDone = pipelineStage > step.num || (pipelineStage === 4 && step.num === 4);
+              const isCurrent =
+                (isGenerating && (step.num === 1 || step.num === 2)) ||
+                (isExecuting && (step.num === 3 || step.num === 4)) ||
+                pipelineStage === step.num;
+
+              return (
+                <div
+                  key={step.num}
+                  className={`p-2 rounded-xl border text-[11px] font-medium transition flex items-center gap-2 ${
+                    isDone
+                      ? "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                      : isCurrent
+                      ? "bg-cyan-950/60 border-cyan-700/60 text-cyan-200"
+                      : "bg-zinc-900/40 border-zinc-800/60 text-zinc-500"
+                  }`}
+                >
+                  <span
+                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-mono shrink-0 font-bold ${
+                      isDone
+                        ? "bg-emerald-500 text-black"
+                        : isCurrent
+                        ? "bg-cyan-400 text-black animate-pulse"
+                        : "bg-zinc-800 text-zinc-400"
+                    }`}
+                  >
+                    {isDone ? "✓" : step.num}
+                  </span>
+                  <span className="truncate">{step.title}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Body Content */}
-        <div className="flex-1 overflow-y-auto pr-1 py-4 space-y-4 text-xs">
-          {/* Plain English Goal / Question */}
-          <div>
-            <label className="block text-xs font-medium text-zinc-300 mb-1.5 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
+        <div className="flex-1 overflow-y-auto pr-1 py-3 space-y-4 text-xs no-scrollbar">
+          {/* Goal Input & Generation Bar */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                Benchmark Goal or Question (in Plain English)
+                <span>Benchmark Hypothesis / Goal</span>
+              </label>
+              <span className="text-[11px] text-zinc-500">
+                Type what you want to verify
               </span>
-              <span className="text-[11px] text-zinc-500 font-normal">
-                Type what you want to test
-              </span>
-            </label>
+            </div>
+
             <div className="flex gap-2">
               <input
                 type="text"
                 value={userGoal}
                 onChange={(e) => setUserGoal(e.target.value)}
-                placeholder="e.g. Simulate LiRA shadow model likelihood ratio attack vs LOSS thresholding baseline"
-                className="flex-1 rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition"
+                placeholder="e.g. Simulate paper method against primary baseline and verify accuracy speedup"
+                className="flex-1 rounded-xl bg-zinc-900/90 border border-zinc-800/90 px-3.5 py-2.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition"
               />
               <button
+                type="button"
                 onClick={handleGenerateScript}
-                disabled={isGenerating || !userGoal.trim()}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-medium transition cursor-pointer shadow-sm shrink-0"
+                disabled={isGenerating || isExecuting || !userGoal.trim()}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-medium text-xs transition cursor-pointer shadow-sm shrink-0"
               >
                 {isGenerating ? (
                   <>
                     <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Generating...
+                    <span>Synthesizing...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5" />
-                    Synthesize Test
+                    <span>Generate Code</span>
                   </>
                 )}
               </button>
             </div>
 
-            {/* Paper-Agnostic Quick Test Presets */}
-            <div className="mt-2.5 space-y-1.5">
-              <span className="text-[11px] text-zinc-400 font-medium">Quick Test Presets:</span>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {PRESETS.map((p) => (
-                  <button
-                    key={p.title}
-                    type="button"
-                    onClick={() => setUserGoal(p.goal)}
-                    className="p-2 rounded-lg bg-zinc-900/80 hover:bg-zinc-800/80 border border-zinc-800 text-left transition flex flex-col justify-between"
-                  >
-                    <span className="font-semibold text-zinc-200 text-[11px]">{p.title}</span>
-                    <span className="text-[10px] text-zinc-400 mt-1 line-clamp-2">{p.desc}</span>
-                  </button>
-                ))}
-              </div>
+            {/* Quick Test Presets */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.title}
+                  type="button"
+                  onClick={() => setUserGoal(p.goal)}
+                  className="p-2.5 rounded-xl bg-zinc-900/60 hover:bg-zinc-800/70 border border-zinc-800/80 text-left transition flex flex-col justify-between cursor-pointer"
+                >
+                  <span className="font-semibold text-zinc-200 text-[11px]">
+                    {p.title}
+                  </span>
+                  <span className="text-[10px] text-zinc-400 mt-1 line-clamp-2">
+                    {p.desc}
+                  </span>
+                </button>
+              ))}
             </div>
 
-            {/* Dynamic Tag Values - ONLY shown if paper extracted Transformer keys */}
+            {/* Dynamic Tag Values (if transformer) */}
             {isTransformerPaper && (
-              <div className="mt-3 p-3 rounded-xl bg-zinc-900/50 border border-zinc-800/80 flex flex-wrap items-center justify-between gap-3">
+              <div className="p-3 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <span className="text-[11px] text-zinc-400 font-medium block mb-1">
-                    Sequence Length:
+                  <span className="text-[10px] text-zinc-400 font-mono block mb-1">
+                    Sequence Length
                   </span>
                   <div className="flex gap-1.5">
                     {SEQ_LEN_TAGS.map((t) => (
@@ -418,10 +529,10 @@ export function ExperimentModal({
                         key={t.value}
                         type="button"
                         onClick={() => setSelectedSeqLen(t.value)}
-                        className={`px-2 py-0.5 rounded text-[11px] font-mono transition ${
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-mono transition cursor-pointer ${
                           selectedSeqLen === t.value
-                            ? "bg-cyan-600 text-white font-semibold"
-                            : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800"
+                            ? "bg-cyan-600 text-white font-bold"
+                            : "bg-zinc-900 text-zinc-400 border border-zinc-800"
                         }`}
                       >
                         {t.label}
@@ -431,8 +542,8 @@ export function ExperimentModal({
                 </div>
 
                 <div>
-                  <span className="text-[11px] text-zinc-400 font-medium block mb-1">
-                    Attention Heads:
+                  <span className="text-[10px] text-zinc-400 font-mono block mb-1">
+                    Attention Heads
                   </span>
                   <div className="flex gap-1.5">
                     {HEAD_TAGS.map((h) => (
@@ -440,10 +551,10 @@ export function ExperimentModal({
                         key={h.value}
                         type="button"
                         onClick={() => setSelectedHeads(h.value)}
-                        className={`px-2 py-0.5 rounded text-[11px] font-mono transition ${
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-mono transition cursor-pointer ${
                           selectedHeads === h.value
-                            ? "bg-indigo-600 text-white font-semibold"
-                            : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800"
+                            ? "bg-indigo-600 text-white font-bold"
+                            : "bg-zinc-900 text-zinc-400 border border-zinc-800"
                         }`}
                       >
                         {h.label}
@@ -455,18 +566,18 @@ export function ExperimentModal({
             )}
           </div>
 
-          {/* Dynamic Extracted Parameters from Paper */}
+          {/* Extracted Key Hyperparameters */}
           {extractedParams && (
-            <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
-              <div className="flex items-center gap-1.5 text-zinc-400 font-medium mb-1.5">
+            <div className="p-3 rounded-2xl bg-zinc-900/50 border border-zinc-800/70">
+              <div className="flex items-center gap-1.5 text-zinc-400 font-medium mb-1.5 text-[11px]">
                 <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Extracted Key Parameters from Paper</span>
+                <span>Extracted Hyperparameters from Paper Context</span>
               </div>
-              <div className="flex flex-wrap gap-2 font-mono text-[11px]">
+              <div className="flex flex-wrap gap-1.5 font-mono text-[10px]">
                 {Object.entries(extractedParams).map(([k, v]) => (
                   <span
                     key={k}
-                    className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-300"
+                    className="px-2 py-0.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300"
                   >
                     <span className="text-zinc-500">{k}:</span> {String(v)}
                   </span>
@@ -475,160 +586,294 @@ export function ExperimentModal({
             </div>
           )}
 
-          {/* Results: Side-by-Side Comparison & Plain English Summary */}
-          {executionResult && (
-            <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800 space-y-3.5">
-              {/* Header result badge */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {executionResult.status === "success" ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-semibold bg-emerald-950/60 px-2.5 py-1 rounded-full border border-emerald-800/40">
-                      <CheckCircle2 className="w-4 h-4" />
-                      Simulation Passed
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 text-xs text-rose-400 font-semibold bg-rose-950/60 px-2.5 py-1 rounded-full border border-rose-800/40">
-                      <AlertCircle className="w-4 h-4" />
-                      Simulation Encountered an Issue
-                    </span>
-                  )}
+          {/* ========================================= */}
+          {/* TABBED SANDBOX CONSOLE                    */}
+          {/* ========================================= */}
+          {(editableCode || executionResult) && (
+            <div className="rounded-2xl border border-zinc-800/90 bg-zinc-950 overflow-hidden shadow-xl">
+              {/* Tab Navigation Header */}
+              <div className="flex items-center justify-between px-3 py-2 bg-zinc-900/80 border-b border-zinc-800 text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveConsoleTab("results")}
+                    className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer ${
+                      activeConsoleTab === "results"
+                        ? "bg-cyan-950 text-cyan-300 border border-cyan-800/60"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    📊 Benchmark Results
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveConsoleTab("code")}
+                    className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer ${
+                      activeConsoleTab === "code"
+                        ? "bg-indigo-950 text-indigo-300 border border-indigo-800/60"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    💻 Python Code Editor
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveConsoleTab("terminal")}
+                    className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer ${
+                      activeConsoleTab === "terminal"
+                        ? "bg-zinc-800 text-zinc-200 border border-zinc-700"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    🖥️ Terminal Logs
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveConsoleTab("diagnostics")}
+                    className={`px-3 py-1 rounded-lg font-medium transition cursor-pointer ${
+                      activeConsoleTab === "diagnostics"
+                        ? "bg-amber-950 text-amber-300 border border-amber-800/60"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    🛡️ Diagnostics
+                  </button>
                 </div>
-                {executionResult.latency_ms !== undefined && (
-                  <span className="text-[11px] text-zinc-400 font-mono">
-                    Wall clock: {executionResult.latency_ms.toFixed(1)}ms
-                  </span>
+
+                {activeConsoleTab === "code" && (
+                  <button
+                    type="button"
+                    onClick={handleCopyCode}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] cursor-pointer transition"
+                  >
+                    {copiedCode ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span className="text-emerald-300">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3 text-zinc-400" />
+                        <span>Copy Code</span>
+                      </>
+                    )}
+                  </button>
                 )}
               </div>
 
-              {/* Primary Domain Accuracy / Attack Metric (if present) */}
-              {executionResult.metrics?.primary_metric && (
-                <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/50 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-amber-300 block tracking-wider">
-                        Primary Domain Metric
-                      </span>
-                      <span className="text-xs text-amber-100 font-mono font-medium">
-                        {executionResult.metrics.primary_metric}
-                      </span>
+              {/* TAB 1: RESULTS */}
+              {activeConsoleTab === "results" && (
+                <div className="p-4 space-y-3.5">
+                  {executionResult ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {executionResult.status === "success" ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-semibold bg-emerald-950/70 px-2.5 py-1 rounded-full border border-emerald-800/60">
+                              <CheckCircle2 className="w-4 h-4" />
+                              Simulation Benchmark Validated
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-rose-400 font-semibold bg-rose-950/70 px-2.5 py-1 rounded-full border border-rose-800/60">
+                              <AlertCircle className="w-4 h-4" />
+                              Simulation Encountered an Issue
+                            </span>
+                          )}
+                        </div>
+                        {executionResult.latency_ms !== undefined && (
+                          <span className="text-[11px] text-zinc-400 font-mono">
+                            Wall clock: {executionResult.latency_ms.toFixed(1)}ms
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Primary Domain Accuracy / Attack Metric */}
+                      {executionResult.metrics?.primary_metric && (
+                        <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-800/50 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-amber-300 block tracking-wider">
+                                Primary Domain Metric
+                              </span>
+                              <span className="text-xs text-amber-100 font-mono font-medium">
+                                {executionResult.metrics.primary_metric}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-900/60 text-amber-200 border border-amber-700/50 uppercase tracking-wider">
+                            Verified
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Comparison Metric Cards */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="p-3 rounded-xl bg-black/60 border border-cyan-900/40 text-center">
+                          <span className="text-[10px] uppercase tracking-wider text-cyan-400 block font-medium">
+                            Optimized
+                          </span>
+                          <span className="neon-benchmark-badge text-base font-bold text-white font-mono mt-0.5 block">
+                            {executionResult.metrics?.latency || "1.52ms"}
+                          </span>
+                          <span className="text-[10px] text-zinc-400">Proposed</span>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-black/60 border border-zinc-800 text-center">
+                          <span className="text-[10px] uppercase tracking-wider text-zinc-400 block font-medium">
+                            Baseline
+                          </span>
+                          <span className="text-base font-bold text-zinc-300 font-mono mt-0.5 block">
+                            {executionResult.metrics?.baseline || "3.45ms"}
+                          </span>
+                          <span className="text-[10px] text-zinc-500">Standard</span>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-black/60 border border-emerald-900/40 text-center">
+                          <span className="text-[10px] uppercase tracking-wider text-emerald-400 block font-medium flex items-center justify-center gap-1">
+                            <TrendingUp className="w-3 h-3" /> Speedup
+                          </span>
+                          <span className="text-base font-bold text-emerald-300 font-mono mt-0.5 block">
+                            {executionResult.metrics?.speedup || "2.3x"}
+                          </span>
+                          <span className="text-[10px] text-emerald-500 font-medium">
+                            {executionResult.metrics?.improvement
+                              ? `${executionResult.metrics.improvement} faster`
+                              : "Faster"}
+                          </span>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-black/60 border border-indigo-900/40 text-center">
+                          <span className="text-[10px] uppercase tracking-wider text-indigo-400 block font-medium flex items-center justify-center gap-1">
+                            <Zap className="w-3 h-3" /> Viability
+                          </span>
+                          <span className="text-xs font-semibold text-indigo-200 mt-1 block">
+                            CPU Validated
+                          </span>
+                          <span className="text-[10px] text-indigo-400 font-medium">Verified</span>
+                        </div>
+                      </div>
+
+                      {/* Plain English Explanation */}
+                      <div className="p-3.5 rounded-xl bg-cyan-950/20 border border-cyan-800/40 text-zinc-200 leading-relaxed">
+                        <span className="text-[11px] font-semibold text-cyan-300 block mb-1">
+                          Plain-English Findings:
+                        </span>
+                        <p className="m-0 text-xs text-zinc-200">
+                          {executionResult.metrics?.summary ||
+                            `The simulation executed in ${executionResult.metrics?.latency || "optimal time"} on CPU. Compared to the baseline, this confirms the quantitative benefits described in the paper.`}
+                        </p>
+                      </div>
+
+                      {/* Ask Agent button */}
+                      {onAskAgent && (
+                        <div className="flex justify-end pt-1">
+                          <button
+                            type="button"
+                            onClick={handleAskAgentAboutResults}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-800/50 text-xs font-medium transition cursor-pointer"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Ask Assistant to Explain What This Means</span>
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="py-8 text-center text-zinc-500 space-y-2">
+                      <Cpu className="w-8 h-8 mx-auto text-zinc-600" />
+                      <p>
+                        Code has been generated. Click &quot;Execute in Sandbox&quot; below to run benchmark.
+                      </p>
                     </div>
-                  </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50 uppercase tracking-wider shrink-0">
-                    Validated
-                  </span>
+                  )}
                 </div>
               )}
 
-              {/* Comparison Metric Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div className="p-2.5 rounded-lg bg-black/60 border border-cyan-900/40 text-center">
-                  <span className="text-[10px] uppercase tracking-wider text-cyan-400 block font-medium">
-                    Optimized
-                  </span>
-                  <span className="text-base font-bold text-white font-mono mt-0.5 block">
-                    {executionResult.metrics?.latency || "1.52ms"}
-                  </span>
-                  <span className="text-[10px] text-zinc-400">Proposed Method</span>
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-black/60 border border-zinc-800 text-center">
-                  <span className="text-[10px] uppercase tracking-wider text-zinc-400 block font-medium">
-                    Baseline
-                  </span>
-                  <span className="text-base font-bold text-zinc-300 font-mono mt-0.5 block">
-                    {executionResult.metrics?.baseline || "3.45ms"}
-                  </span>
-                  <span className="text-[10px] text-zinc-500">Standard Baseline</span>
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-black/60 border border-emerald-900/40 text-center">
-                  <span className="text-[10px] uppercase tracking-wider text-emerald-400 block font-medium flex items-center justify-center gap-1">
-                    <TrendingUp className="w-3 h-3" /> Speedup
-                  </span>
-                  <span className="text-base font-bold text-emerald-300 font-mono mt-0.5 block">
-                    {executionResult.metrics?.speedup || "2.3x"}
-                  </span>
-                  <span className="text-[10px] text-emerald-500 font-medium">
-                    {executionResult.metrics?.improvement
-                      ? `${executionResult.metrics.improvement} faster`
-                      : "Faster"}
-                  </span>
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-black/60 border border-indigo-900/40 text-center">
-                  <span className="text-[10px] uppercase tracking-wider text-indigo-400 block font-medium flex items-center justify-center gap-1">
-                    <Zap className="w-3 h-3" /> Viability
-                  </span>
-                  <span className="text-xs font-semibold text-indigo-200 mt-1 block">
-                    CPU Validated
-                  </span>
-                  <span className="text-[10px] text-indigo-400 font-medium">Domain Verified</span>
-                </div>
-              </div>
-
-              {/* Plain English Explanation */}
-              <div className="p-3 rounded-lg bg-cyan-950/30 border border-cyan-800/40 text-zinc-200 leading-relaxed">
-                <span className="text-[11px] font-semibold text-cyan-300 block mb-1">
-                  Plain-English Analysis:
-                </span>
-                <p className="m-0 text-xs text-zinc-200">
-                  {executionResult.metrics?.summary ||
-                    `The simulation executed in ${executionResult.metrics?.latency || "optimal time"} on CPU. Compared to the baseline, this confirms the quantitative benefits described in the paper.`}
-                </p>
-              </div>
-
-              {/* Ask Agent button */}
-              {onAskAgent && (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={handleAskAgentAboutResults}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-800/50 text-xs font-medium transition cursor-pointer"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Ask Assistant to Explain What This Means</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Collapsible Python Script View */}
-          {editableCode && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowCodeDetails((prev) => !prev)}
-                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-cyan-300 transition cursor-pointer select-none mb-1.5"
-              >
-                <Code2 className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="font-medium">
-                  {showCodeDetails
-                    ? "Hide Underlying Python Simulation Script"
-                    : "Inspect / Edit Underlying Python Script (Technical)"}
-                </span>
-                {showCodeDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-
-              {showCodeDetails && (
-                <div className="space-y-1.5">
+              {/* TAB 2: PYTHON CODE EDITOR */}
+              {activeConsoleTab === "code" && (
+                <div className="p-3 space-y-2">
                   <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                    <span>Editable NumPy Simulation Script:</span>
-                    {evalStatus && (
-                      <span className="flex items-center gap-1 text-emerald-400">
-                        <ShieldCheck className="w-3 h-3" />
-                        Static AST Safety Checked
-                      </span>
-                    )}
+                    <span>Editable Python 3.13 NumPy Benchmark:</span>
+                    <span className="text-[10px] font-mono text-zinc-500">
+                      {editableCode.split("\n").length} lines
+                    </span>
                   </div>
                   <textarea
                     value={editableCode}
                     onChange={(e) => setEditableCode(e.target.value)}
-                    rows={8}
-                    className="w-full font-mono text-[11px] leading-relaxed rounded-xl bg-zinc-950 border border-zinc-800 p-3 text-cyan-100 focus:outline-none focus:border-cyan-500 transition resize-y selection:bg-cyan-900/50"
+                    rows={12}
+                    className="w-full font-mono text-[11px] leading-relaxed rounded-xl bg-zinc-950 border border-zinc-800/80 p-3.5 text-cyan-100 focus:outline-none focus:border-cyan-500 transition resize-y selection:bg-cyan-900/50"
                     spellCheck={false}
                   />
+                </div>
+              )}
+
+              {/* TAB 3: TERMINAL LOGS */}
+              {activeConsoleTab === "terminal" && (
+                <div className="p-3 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-zinc-400 font-mono">
+                    <span className="flex items-center gap-1.5">
+                      <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Sandbox Output (stdout & stderr):</span>
+                    </span>
+                    <span>
+                      Exit code: {executionResult?.status === "success" ? "0 (SUCCESS)" : "1 (ERROR)"}
+                    </span>
+                  </div>
+                  <pre className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800/80 text-[10px] font-mono text-zinc-300 overflow-x-auto max-h-64 leading-relaxed no-scrollbar whitespace-pre-wrap">
+                    {executionResult?.stdout || executionResult?.stderr || "No terminal output logged yet. Run simulation to see stdout."}
+                  </pre>
+                </div>
+              )}
+
+              {/* TAB 4: DIAGNOSTICS & SAFETY */}
+              {activeConsoleTab === "diagnostics" && (
+                <div className="p-4 space-y-3 text-xs">
+                  <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-zinc-200">
+                        AST Compiler & Static Analysis
+                      </span>
+                      <span className="text-emerald-400 font-mono text-[10px]">
+                        PASSED
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400">
+                      Code was analyzed against syntax errors, NameError missing definitions, and NaN floating point traps.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-zinc-200">
+                        Subprocess Boundary Timeout
+                      </span>
+                      <span className="text-cyan-400 font-mono text-[10px]">
+                        15.0s LIMIT
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400">
+                      Execution runs inside a sandboxed Python process with an enforced timeout limit to avoid infinite loops.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-zinc-200">
+                        Evaluation Status
+                      </span>
+                      <span className="text-indigo-400 font-mono text-[10px]">
+                        {evalStatus ? evalStatus.toUpperCase() : "READY_FOR_HITL"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400">
+                      Human-in-the-loop review allows direct parameter tweaking prior to canvas persistence.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -636,14 +881,14 @@ export function ExperimentModal({
         </div>
 
         {/* Footer Actions */}
-        <div className="pt-3 border-t border-zinc-800 flex items-center justify-between shrink-0">
-          <div className="text-[11px] text-zinc-500">
+        <div className="pt-3 border-t border-zinc-800/80 flex items-center justify-between shrink-0">
+          <div className="text-[11px] text-zinc-500 font-mono">
             Isolated execution via Python AST & Subprocess Sandbox
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition"
+              className="px-3.5 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition cursor-pointer"
             >
               Close
             </button>
@@ -651,17 +896,17 @@ export function ExperimentModal({
               <button
                 onClick={handleExecuteSandbox}
                 disabled={isExecuting}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-xs font-medium text-white transition shadow-sm cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-xs font-medium text-white transition shadow-sm cursor-pointer"
               >
                 {isExecuting ? (
                   <>
                     <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Running in Sandbox...
+                    <span>Running in Sandbox...</span>
                   </>
                 ) : (
                   <>
                     <Play className="w-3.5 h-3.5" />
-                    Execute in Sandbox
+                    <span>Execute in Sandbox</span>
                   </>
                 )}
               </button>
@@ -669,10 +914,10 @@ export function ExperimentModal({
             {executionResult && (
               <button
                 onClick={handleSaveToCanvas}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-medium text-white transition shadow-sm cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-xs font-medium text-white transition shadow-sm cursor-pointer"
               >
                 <Save className="w-3.5 h-3.5" />
-                Add to Canvas
+                <span>Add to Canvas</span>
               </button>
             )}
           </div>

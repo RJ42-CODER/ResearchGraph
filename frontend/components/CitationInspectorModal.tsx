@@ -112,20 +112,20 @@ export function CitationInspectorModal({
     const type = data.source_type;
     if (type === "pdf_page") {
       return (
-        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 [html[data-theme='light']_&]:bg-emerald-50 [html[data-theme='light']_&]:text-emerald-950 [html[data-theme='light']_&]:border-emerald-200">
           ✓ Verified from PDF
         </span>
       );
     }
     if (type === "indexed_chunk") {
       return (
-        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-800/60">
+        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 [html[data-theme='light']_&]:bg-indigo-50 [html[data-theme='light']_&]:text-indigo-950 [html[data-theme='light']_&]:border-indigo-200">
           ✓ Vector Indexed Chunk
         </span>
       );
     }
     return (
-      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800/60">
+      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800/60 [html[data-theme='light']_&]:bg-amber-50 [html[data-theme='light']_&]:text-amber-950 [html[data-theme='light']_&]:border-amber-200">
         Abstract / Overview
       </span>
     );
@@ -187,9 +187,9 @@ export function CitationInspectorModal({
           ) : (
             <>
               {/* Citation Anchor Tag */}
-              <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80 [html[data-theme='light']_&]:border-slate-200">
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/50">
+                  <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/50 [html[data-theme='light']_&]:bg-indigo-50 [html[data-theme='light']_&]:text-indigo-950 [html[data-theme='light']_&]:border-indigo-200">
                     {data?.citation_label || citation.label}
                   </span>
                   <span className="text-[11px] text-zinc-500">
@@ -202,25 +202,25 @@ export function CitationInspectorModal({
               </div>
 
               {/* Verified Text Quote Box */}
-              <div className="relative p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-200 leading-relaxed font-serif text-[13px] shadow-inner select-text">
-                <div className="absolute top-2 left-2 text-zinc-700 font-serif text-3xl select-none leading-none">
+              <div className="relative p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 text-zinc-200 [html[data-theme='light']_&]:bg-slate-50 [html[data-theme='light']_&]:text-slate-900 [html[data-theme='light']_&]:border-slate-200 leading-relaxed font-serif text-[13px] shadow-inner select-text">
+                <div className="absolute top-2 left-2 text-zinc-700 [html[data-theme='light']_&]:text-slate-400 font-serif text-3xl select-none leading-none">
                   &ldquo;
                 </div>
                 <div className="pl-4 pt-1 whitespace-pre-wrap">
                   {data?.excerpt ||
                     "No textual excerpt was located for this specific page reference."}
                 </div>
-                <div className="text-right text-zinc-700 font-serif text-3xl select-none leading-none">
+                <div className="text-right text-zinc-700 [html[data-theme='light']_&]:text-slate-400 font-serif text-3xl select-none leading-none">
                   &rdquo;
                 </div>
               </div>
 
-              <div className="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-400">
+              <div className="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800/60 [html[data-theme='light']_&]:bg-slate-100/60 [html[data-theme='light']_&]:border-slate-200 [html[data-theme='light']_&]:text-slate-700 flex items-center justify-between text-[11px] text-zinc-400">
                 <span>
                   Grounding Rule: Responses citing this tag are directly verified
                   against this source text.
                 </span>
-                <span className="text-indigo-400 font-mono">100% Traceable</span>
+                <span className="text-indigo-400 [html[data-theme='light']_&]:text-indigo-700 font-mono">100% Traceable</span>
               </div>
             </>
           )}

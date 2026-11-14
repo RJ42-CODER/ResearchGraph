@@ -13,6 +13,7 @@ export interface WorkspaceNodeData {
   analyzingCount?: number;
   taskMode?: "comparison" | "gaps";
   onModeChange?: (mode: "comparison" | "gaps") => void;
+  isCompact?: boolean;
   [key: string]: unknown;
 }
 
@@ -23,22 +24,24 @@ export function SynthesisResultNode({
   data: WorkspaceNodeData;
   selected?: boolean;
 }) {
+  const isCompact = !!data.isCompact;
+
   return (
     <ResizableNodeFrame
       selected={selected}
       minWidth={280}
-      minHeight={180}
+      minHeight={isCompact ? 130 : 180}
       accentColor="#818cf8"
-      handleClassName="!bg-indigo-500 !w-3 !h-3 !border-2 !border-zinc-950"
-      className="rounded-[10px] border border-indigo-600 bg-zinc-900 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.6)] text-left"
+      handleClassName="!bg-indigo-500 !w-2.5 !h-2.5 !border-2 !border-zinc-950"
+      className="rounded-xl border border-zinc-800 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-md transition-colors hover:border-indigo-700/80 text-left"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-indigo-500/30 pb-2 shrink-0 cursor-grab active:cursor-grabbing">
-        <span className="font-bold text-xs text-indigo-300 truncate">
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-800/80 [html[data-theme='light']_&]:border-slate-200 pb-2 shrink-0 cursor-grab active:cursor-grabbing">
+        <span className="font-bold text-xs text-indigo-300 [html[data-theme='light']_&]:text-indigo-950 truncate">
           ⚡ {data.title || "Synthesis Results"}
         </span>
         {typeof data.paperCount === "number" && (
-          <span className="shrink-0 text-[10px] font-medium text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
-            {data.paperCount} Papers Compared
+          <span className="shrink-0 text-[10px] font-medium text-indigo-300 bg-indigo-950/80 [html[data-theme='light']_&]:bg-indigo-50 [html[data-theme='light']_&]:text-indigo-950 [html[data-theme='light']_&]:border-indigo-200 px-2.5 py-0.5 rounded-full border border-indigo-800/80">
+            {data.paperCount} Papers
           </span>
         )}
       </div>
@@ -46,7 +49,9 @@ export function SynthesisResultNode({
       <ScrollableNodeBody className="mt-2.5 pr-1">
         <FormattedPlainText
           text={data.summary || "No synthesis output available."}
-          className="text-[11px] text-zinc-200 font-normal leading-relaxed break-words"
+          className={`text-[11px] text-zinc-200 font-normal leading-relaxed break-words ${
+            isCompact ? "line-clamp-3" : ""
+          }`}
         />
       </ScrollableNodeBody>
     </ResizableNodeFrame>
@@ -70,16 +75,16 @@ export function SynthesisTaskNode({
       minWidth={260}
       minHeight={150}
       accentColor={taskMode === "gaps" ? "#f59e0b" : "#c084fc"}
-      handleClassName={`!w-3 !h-3 !border-2 !border-zinc-950 ${taskMode === "gaps" ? "!bg-amber-500" : "!bg-purple-500"}`}
-      className={`rounded-[10px] border border-dashed bg-zinc-900 p-3.5 shadow-xl text-left transition-colors ${
-        taskMode === "gaps" ? "border-amber-600" : "border-purple-600"
+      handleClassName={`!w-2.5 !h-2.5 !border-2 !border-zinc-950 ${
+        taskMode === "gaps" ? "!bg-amber-500" : "!bg-purple-500"
       }`}
+      className={`rounded-xl border border-dashed border-zinc-800 bg-zinc-950/95 p-3.5 shadow-2xl backdrop-blur-md text-left transition-colors hover:border-zinc-700`}
     >
       <div
         className={`font-semibold text-xs flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing pb-1.5 border-b ${
           taskMode === "gaps"
-            ? "text-amber-300 border-amber-800/40"
-            : "text-purple-300 border-purple-800/40"
+            ? "text-amber-300 [html[data-theme='light']_&]:text-amber-950 border-amber-800/40 [html[data-theme='light']_&]:border-amber-200"
+            : "text-purple-300 [html[data-theme='light']_&]:text-purple-950 border-purple-800/40 [html[data-theme='light']_&]:border-purple-200"
         }`}
       >
         {isAnalyzing ? (
@@ -99,7 +104,7 @@ export function SynthesisTaskNode({
       </div>
 
       {/* Mode Switcher Pill */}
-      <div className="mt-2 flex items-center p-0.5 rounded-lg bg-zinc-950/90 border border-zinc-800 text-[10px] shrink-0 nodrag">
+      <div className="mt-2 flex items-center p-0.5 rounded-lg bg-zinc-900/90 border border-zinc-800 [html[data-theme='light']_&]:bg-slate-100 [html[data-theme='light']_&]:border-slate-300 text-[10px] shrink-0 nodrag">
         <button
           type="button"
           onClick={(e) => {
@@ -110,8 +115,8 @@ export function SynthesisTaskNode({
           }}
           className={`flex-1 py-1 px-2 rounded-md font-medium transition cursor-pointer text-center ${
             taskMode === "comparison"
-              ? "bg-purple-900/80 text-purple-200 border border-purple-700/60 shadow-sm"
-              : "text-zinc-400 hover:text-zinc-200"
+              ? "bg-purple-900/80 text-purple-200 border border-purple-700/60 shadow-sm [html[data-theme='light']_&]:bg-purple-100 [html[data-theme='light']_&]:text-purple-950 [html[data-theme='light']_&]:border-purple-300"
+              : "text-zinc-400 hover:text-zinc-200 [html[data-theme='light']_&]:text-slate-600 [html[data-theme='light']_&]:hover:text-slate-900"
           }`}
         >
           📋 Compare
@@ -126,8 +131,8 @@ export function SynthesisTaskNode({
           }}
           className={`flex-1 py-1 px-2 rounded-md font-medium transition cursor-pointer text-center ${
             taskMode === "gaps"
-              ? "bg-amber-950/80 text-amber-200 border border-amber-700/60 shadow-sm"
-              : "text-zinc-400 hover:text-zinc-200"
+              ? "bg-amber-950/80 text-amber-200 border border-amber-700/60 shadow-sm [html[data-theme='light']_&]:bg-amber-100 [html[data-theme='light']_&]:text-amber-950 [html[data-theme='light']_&]:border-amber-300"
+              : "text-zinc-400 hover:text-zinc-200 [html[data-theme='light']_&]:text-slate-600 [html[data-theme='light']_&]:hover:text-slate-900"
           }`}
         >
           🔍 Gaps
@@ -152,22 +157,24 @@ export function ResearchGapNode({
   data: WorkspaceNodeData;
   selected?: boolean;
 }) {
+  const isCompact = !!data.isCompact;
+
   return (
     <ResizableNodeFrame
       selected={selected}
       minWidth={320}
-      minHeight={220}
+      minHeight={isCompact ? 150 : 220}
       accentColor="#f59e0b"
-      handleClassName="!bg-amber-500 !w-3 !h-3 !border-2 !border-zinc-950"
-      className="rounded-[10px] border border-amber-600 bg-zinc-900 p-4 shadow-[0_8px_30px_rgba(0,0,0,0.6)] text-left"
+      handleClassName="!bg-amber-500 !w-2.5 !h-2.5 !border-2 !border-zinc-950"
+      className="rounded-xl border border-zinc-800 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-md transition-colors hover:border-amber-700/80 text-left"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-amber-500/30 pb-2 shrink-0 cursor-grab active:cursor-grabbing">
-        <span className="font-bold text-xs text-amber-300 truncate">
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-800/80 [html[data-theme='light']_&]:border-slate-200 pb-2 shrink-0 cursor-grab active:cursor-grabbing">
+        <span className="font-bold text-xs text-amber-300 [html[data-theme='light']_&]:text-amber-950 truncate">
           🔍 {data.title || "Research Gap Discovery"}
         </span>
         {typeof data.paperCount === "number" && (
-          <span className="shrink-0 text-[10px] font-medium text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800/80">
-            {data.paperCount} Papers Analyzed
+          <span className="shrink-0 text-[10px] font-medium text-amber-300 bg-amber-950/80 [html[data-theme='light']_&]:bg-amber-100 [html[data-theme='light']_&]:text-amber-950 [html[data-theme='light']_&]:border-amber-300 px-2.5 py-0.5 rounded-full border border-amber-800/80">
+            {data.paperCount} Papers
           </span>
         )}
       </div>
@@ -175,7 +182,9 @@ export function ResearchGapNode({
       <ScrollableNodeBody className="mt-2.5 pr-1">
         <FormattedPlainText
           text={data.summary || data.gaps || "No research gaps identified yet."}
-          className="text-[11px] text-zinc-200 font-normal leading-relaxed break-words"
+          className={`text-[11px] text-zinc-200 font-normal leading-relaxed break-words ${
+            isCompact ? "line-clamp-3" : ""
+          }`}
         />
       </ScrollableNodeBody>
     </ResizableNodeFrame>
@@ -202,15 +211,18 @@ export function NoteNode({
       minWidth={200}
       minHeight={100}
       accentColor="#eab308"
-      handleClassName="!bg-amber-500 !w-3 !h-3 !border-2 !border-zinc-950"
-      className="rounded-lg border border-amber-600 bg-zinc-800 p-3.5 shadow-xl text-left"
+      handleClassName="!bg-amber-500 !w-2.5 !h-2.5 !border-2 !border-zinc-950"
+      className="rounded-xl border border-zinc-800 bg-zinc-950/95 p-3.5 shadow-2xl backdrop-blur-md transition-colors hover:border-amber-600/70 text-left"
     >
-      <div className="flex items-center gap-1.5 pb-1.5 border-b border-amber-700/40 text-[11px] font-semibold text-amber-300 shrink-0 cursor-grab active:cursor-grabbing">
+      <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/80 [html[data-theme='light']_&]:border-slate-200 text-[11px] font-semibold text-amber-300 [html[data-theme='light']_&]:text-amber-950 shrink-0 cursor-grab active:cursor-grabbing">
         <span>📝 Note</span>
+        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-amber-950/60 text-amber-300 border border-amber-800/50 [html[data-theme='light']_&]:bg-amber-100 [html[data-theme='light']_&]:text-amber-950 [html[data-theme='light']_&]:border-amber-300">
+          Editable
+        </span>
       </div>
 
       <ScrollableNodeBody className="mt-2 pr-1">
-        <p className="text-xs text-amber-100 leading-relaxed whitespace-pre-wrap">
+        <p className="text-xs text-amber-100/90 [html[data-theme='light']_&]:text-slate-900 leading-relaxed whitespace-pre-wrap">
           {rawNote}
         </p>
       </ScrollableNodeBody>
@@ -225,6 +237,7 @@ export function UploadedPaperNode({
   data: WorkspaceNodeData;
   selected?: boolean;
 }) {
+  const isCompact = !!data.isCompact;
   const rawTitle = (
     data.title ||
     (typeof data.label === "string" ? data.label : "Uploaded Paper")
@@ -233,20 +246,27 @@ export function UploadedPaperNode({
   return (
     <ResizableNodeFrame
       selected={selected}
-      minWidth={240}
-      minHeight={120}
+      minWidth={260}
+      minHeight={isCompact ? 100 : 130}
       accentColor="#10b981"
-      handleClassName="!bg-emerald-500 !w-3 !h-3 !border-2 !border-zinc-950"
-      className="rounded-[10px] border border-emerald-600 bg-zinc-900 p-4 shadow-xl text-left"
+      handleClassName="!bg-emerald-500 !w-2.5 !h-2.5 !border-2 !border-zinc-950"
+      className="rounded-xl border border-zinc-800 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-md transition-colors hover:border-emerald-700/80 text-left"
     >
-      <div className="pb-2 border-b border-emerald-900/50 shrink-0 cursor-grab active:cursor-grabbing">
-        <h3 className="text-[13px] font-semibold text-emerald-400 leading-snug line-clamp-2">
+      <div className="pb-2 border-b border-zinc-800/80 [html[data-theme='light']_&]:border-slate-200 flex items-center justify-between gap-2 shrink-0 cursor-grab active:cursor-grabbing">
+        <h3 className="text-xs font-semibold text-emerald-400 [html[data-theme='light']_&]:text-emerald-950 leading-snug line-clamp-1 truncate">
           📄 {rawTitle}
         </h3>
+        <span className="shrink-0 text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-800/60 [html[data-theme='light']_&]:bg-emerald-100 [html[data-theme='light']_&]:text-emerald-950 [html[data-theme='light']_&]:border-emerald-300">
+          ChromaDB
+        </span>
       </div>
 
       <ScrollableNodeBody className="mt-2 pr-1">
-        <p className="text-xs text-zinc-300 font-normal leading-relaxed whitespace-pre-wrap">
+        <p
+          className={`text-xs text-zinc-300 font-normal leading-relaxed whitespace-pre-wrap ${
+            isCompact ? "line-clamp-2" : ""
+          }`}
+        >
           {data.summary ||
             "Paper indexed into ChromaDB. Right-click to query or annotate."}
         </p>

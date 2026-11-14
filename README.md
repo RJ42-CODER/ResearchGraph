@@ -1,24 +1,42 @@
 # ResearchGraph 🔬⚡
+**Autonomous Multi-Agent Literature Discovery, Cross-Paper Synthesis, and Sandbox Experimentation Studio**
 
-An interactive, AI-orchestrated research workspace built with **React Flow**, **FastAPI**, **Ollama**, and **SQLite**.
+ResearchGraph is an interactive, AI-orchestrated research workspace built with **Next.js 16 (React Flow)**, **FastAPI**, **LangGraph**, **Ollama**, **ChromaDB**, and **SQLite**.
 
-ResearchGraph bridges the gap between reading machine learning research papers, discovering verified scientific literature, and practically validating findings. Users can visually ingest academic PDFs or search global literature databases, extract architectural hyperparameters through local semantic search, synthesize benchmark scripts, and execute them with Human-in-the-Loop (HITL) verification.
+ResearchGraph bridges the divide between reading machine learning research papers, discovering verified scientific literature, and practically validating findings. Researchers can visually ingest academic PDFs or search global literature databases, extract domain parameters through local semantic vector memory, synthesize reproducible benchmark scripts, and execute them with Human-in-the-Loop (HITL) verification within an isolated Python sandbox.
 
 ---
 
 ## What ResearchGraph Does
 
-ResearchGraph transforms static PDF papers and academic citations into an active, visual experimentation graph:
+ResearchGraph transforms static PDF papers and academic citations into an active, visual experimentation studio:
 
-- **Research Discovery Hub:** Search millions of open-access and peer-reviewed works directly within the workspace across **OpenAlex** (primary search), **Crossref** (metadata verification & enrichment), and **Unpaywall** (Open Access full-text resolution).
-- **One-Click Literature Graph Ingestion:** Add discovered papers to the infinite React Flow canvas with automatic DOI/OpenAlex ID deduplication and SQLite persistence.
-- **Direct PDF Drag-and-Drop:** Upload local PDFs directly onto the infinite canvas with optimistic rendering and background vector chunking.
-- **Local Semantic Memory:** Indexes paper sections into ChromaDB using local vector embeddings (`nomic-embed-text`) with strict paper isolation (never substituting unrelated papers).
-- **Multi-Agent Hyperparameter Extraction:** LangGraph orchestrates local LLMs (`llama3.2:3b` via Ollama) to extract model dimensions ($d_{\text{model}}$, heads, layers).
-- **Automated Benchmark Synthesis:** Synthesizes isolated Python benchmark scripts targeting core operations (e.g., Multi-Head Attention mechanisms).
-- **Human-in-the-Loop (HITL) Gate:** Inspect and approve synthesized code prior to running.
-- **Subprocess Runner:** Runs scripts in an isolated subprocess, capturing execution latency, standard output, and tracebacks.
-- **Persistent Canvas:** Automatically saves nodes, execution metrics, and directional relationship edges (`references`, `synthesized_into`) into SQLite.
+- **Multi-View Research Studio:** Switch seamlessly between 5 dedicated operational views:
+  1. **Knowledge Graph (`graph`):** Infinite visual 2D canvas with node creation controls, floating HUD, and interactive relationship edges.
+  2. **Home Dashboard (`dashboard`):** Active workspace hero banner, quick stats overview, workspace switcher, and quick-launch actions.
+  3. **Research Library (`library`):** Full-screen tabular literature catalog displaying all ingested papers, authors, publication years, DOIs, open-access badges, and citations, with real-time text filtering and local PDF upload fallbacks.
+  4. **Experiments & Benchmark Lab (`experiments`):** Centralized history of all empirical simulations run within the workspace, featuring speedup ratios, TPR metrics, latency benchmarks, and collapsible Python reproduction scripts.
+  5. **AI Agent Activity (`agents`):** Multi-agent system telemetry showing LangGraph pipeline execution status, ChromaDB vector collection statistics, and Ollama agent health.
+- **Floating Canvas HUD Toolbar:**
+  - **Instant Search Flyout (`⌘K`):** Live search across all nodes on canvas with automatic viewport panning and focus on selection.
+  - **Semantic Filter Pills:** Filter nodes by category (`All`, `Papers`, `Syntheses`, `Gaps`, `Experiments`, `Notes`) with theme-aware hover states.
+  - **One-Click Auto-Tidy:** Organizes all canvas nodes into clean, non-overlapping vertical functional columns and immediately saves coordinates to SQLite.
+  - **SQLite-Synced Layout Undo & Redo (`⌘Z` / `⌘⇧Z`):** Tracks spatial layout changes, persisting coordinates to SQLite on every step while safely ignoring keystrokes when typing in text fields.
+- **Dual-Theme Monochrome Glassmorphism:**
+  - Icon-only header toggle (`Sun` / `Moon`) with zero intrusive toasts, persisting in `localStorage`.
+  - **Dark Mode:** Deep black canvas (`#000000`), `bg-white/[0.04]` surfaces, `border-white/15`, and subtle white grid dots.
+  - **Light Mode:** Crisp paper-white canvas (`#ffffff`), `bg-slate-50` card surfaces, `border-slate-200` borders, and crisp black grid dots (`fill: #000000; opacity: 0.35`).
+  - Strict semantic color isolation: Colors are strictly reserved for ReactFlow graph nodes and animated directional edges.
+- **Academic Literature Discovery Hub:** Search millions of open-access and peer-reviewed works directly within the workspace across **OpenAlex** (primary academic search), **Crossref** (metadata verification & enrichment), and **Unpaywall** (Open Access full-text resolution).
+- **Direct PDF Drag-and-Drop & Vector Memory:** Upload local PDFs directly onto the canvas with background vector chunking into ChromaDB using local embeddings (`nomic-embed-text`) with strict project namespace isolation.
+- **Multi-Paper Synthesis & Research Gap Engine:** Connect 2+ papers to discover contradictions, methodological divergence, limitations, and unexplored research gaps. Synthesized results are indexed back into vector storage.
+- **User-Directed Experiment Sandbox ("Boss" Agent + HITL):**
+  - Reader Agent dynamically extracts domain-specific parameters without forcing Transformer-specific architectures.
+  - Coder Agent synthesizes standalone, verified `numpy` CPU benchmark scripts with high-resolution `time.perf_counter()` timing.
+  - Evaluator Node pre-validates scripts via static `compile()` and a sandbox dry-run, substituting verified domain fallbacks if errors occur.
+  - Human-in-the-Loop modal enables live code editing, parameter adjustment, execution, and plain-English summary generation.
+- **Traceable Citations & Citation Inspector:** Grounded Q&A citations (`[Page X]`, `[Abstract]`) are interactive badges; clicking any badge opens verbatim PDF text excerpts with a **"Focus Paper on Canvas"** button.
+- **Dual-Path Workspace Export:** Export the complete workspace as a comprehensive **Markdown Research Dossier (`.md`)** or standard **BibTeX Bibliography (`.bib`)**, backed by an instant in-browser client generator fallback.
 
 ---
 
@@ -32,21 +50,26 @@ ResearchGraph transforms static PDF papers and academic citations into an active
          │
          ▼
 [ Text Chunking & ChromaDB ] ──► Local Embeddings (nomic-embed-text)
-         │                       (Strict metadata isolation)
+         │                       (Strict project metadata isolation)
          ▼
-[ LangGraph Pipeline ]
-   ├─ Reader Agent: Extracts hyperparameters from vector memory
+[ LangGraph Multi-Agent Pipeline ]
+   ├─ Reader Agent: Extracts domain parameters from vector memory
    ├─ Coder Agent: Generates standalone benchmark code
-   └─ Evaluator Agent: Performs static security and pattern analysis
+   └─ Evaluator Agent: Validates syntax, dry-runs execution, handles fallbacks
          │
          ▼
-[ Human-in-the-Loop Gate ] ──► Code inspection & approval
+[ Human-in-the-Loop Gate ] ──► Code inspection, parameter editing & approval
          │
          ▼
-[ Local Subprocess Runner ] ──► Local process execution with timeout limits
+[ Subprocess AST Runner ] ──► Local isolated process execution & metric parsing
          │
          ▼
-[ React Flow Canvas ] ──► Persistent graph state in SQLite
+[ Multi-View Studio & React Flow Canvas ] ──► Persistent graph state in SQLite
+   ├─ Knowledge Graph Canvas with Floating HUD Toolbar (⌘K, Tidy, ⌘Z Undo/Redo)
+   ├─ Home Dashboard & Workspace Switcher
+   ├─ Research Library (Tabular Paper Catalog)
+   ├─ Experiments & Benchmark Lab
+   └─ Dual-Theme Monochrome Glassmorphism (Dark / Light)
 ```
 
 ---
@@ -68,16 +91,14 @@ ResearchGraph loads configuration from `backend/.env` using `python-dotenv`. An 
 
 *Note on Unpaywall API:* The Unpaywall `/v2/search` endpoint was retired on 18 September 2026. ResearchGraph strictly uses the compliant single-work DOI lookup endpoint (`/v2/{doi}?email=...`).
 
-*Preserved Configuration:* Configuration variables for CORE, DOAJ, and Hugging Face are preserved in `backend/.env.example` for future integrations.
-
 ---
 
 ## 🔒 Security & System Limitations
 
-- **Subprocess Runner Security Notice:** The existing execution runner (`app/sandbox/runner.py`) uses a local subprocess with static pattern scanning (`BLOCKED_PATTERNS`) and timeout constraints. It is intended solely for local developer benchmarking and is **not a multi-tenant sandboxed security boundary**. Do not expose or deploy this runner publicly without container isolation (e.g., Docker/gVisor/Firecracker).
+- **Subprocess Runner Security Notice:** The execution runner (`app/sandbox/runner.py`) uses a local subprocess with static AST pattern scanning (`BLOCKED_PATTERNS`) and timeout constraints. It is intended for local developer benchmarking and is **not a multi-tenant sandboxed security boundary**. Do not expose or deploy this runner publicly without container isolation (e.g., Docker/gVisor/Firecracker).
 - **Backend API Isolation:** All external academic API calls and API keys remain strictly server-side. No API keys or credentials are leaked to the browser client.
 - **Zero Automatic Downloads:** Discovered paper PDF links are presented as clickable external links; arbitrary remote PDFs are never downloaded or executed automatically.
-- **Strict Vector Isolation:** Vector retrieval queries are isolated strictly to the target `paper_id` in ChromaDB; queries never fall back to unrelated papers when a target paper has no indexed chunks.
+- **Strict Vector Isolation:** Vector retrieval queries are isolated strictly to the target `project_id` and `paper_id` in ChromaDB; queries never cross-contaminate unrelated workspaces or papers.
 
 ---
 
@@ -85,8 +106,8 @@ ResearchGraph loads configuration from `backend/.env` using `python-dotenv`. An 
 
 ### Prerequisites
 
-- **Python 3.10+**
-- **Node.js 18+**
+- **Python 3.10+** (Tested on Python 3.13)
+- **Node.js 18+** (Tested on Node.js 20+)
 - **[Ollama](https://ollama.com/)** running locally
 
 Pull the local models:
@@ -118,12 +139,13 @@ ollama pull nomic-embed-text
 4. Create configuration:
    ```bash
    cp .env.example .env
-   # Edit .env with your email or optional API keys
+   # Edit .env with your contact email for Crossref / Unpaywall
    ```
 
-5. Run unit tests:
+5. Run test suite:
    ```bash
-   python -m pytest tests/test_discovery.py
+   # Run vector indexing, sandbox & export tests (12 tests)
+   $env:PYTHONPATH="."; python -m unittest tests.test_vector_indexing -v
    ```
 
 6. Start the backend API:
@@ -142,9 +164,9 @@ ollama pull nomic-embed-text
    npm install
    ```
 
-2. Verify linting & build:
+2. Run typecheck & build:
    ```bash
-   npm run lint
+   npx tsc --noEmit
    npm run build
    ```
 
@@ -152,4 +174,64 @@ ollama pull nomic-embed-text
    ```bash
    npm run dev
    ```
-   Open `http://localhost:3000` to interact with the workspace canvas and Research Discovery Hub.
+   Open `http://localhost:3000` to interact with ResearchGraph.
+
+---
+
+## 📁 Repository Structure
+
+```
+ResearchGraph/
+├── backend/
+│   ├── app/
+│   │   ├── agents/
+│   │   │   └── pipeline.py          # LangGraph multi-agent synthesis & evaluator
+│   │   ├── api/
+│   │   │   ├── discovery.py         # OpenAlex, Crossref & Unpaywall endpoints
+│   │   │   └── papers.py            # PDF upload & background chunk extraction
+│   │   ├── db/
+│   │   │   ├── database.py          # SQLite schema, project CRUD & node persistence
+│   │   │   └── vector_store.py      # ChromaDB client, overlapping chunker & queries
+│   │   ├── sandbox/
+│   │   │   └── runner.py            # AST-checked subprocess execution & metric parser
+│   │   └── main.py                  # FastAPI router, export generator & citation API
+│   ├── tests/
+│   │   ├── test_discovery.py        # Academic API mocks and fallback tests
+│   │   └── test_vector_indexing.py  # 12-test suite for memory, sandbox & exports
+│   └── requirements.txt             # FastAPI, LangGraph, ChromaDB, pypdf
+├── frontend/
+│   ├── app/
+│   │   ├── globals.css              # Monochrome tokens, light/dark themes, hover protection
+│   │   ├── layout.tsx               # Poppins font configuration & root metadata
+│   │   └── page.tsx                 # Multi-view orchestration, ReactFlow canvas, drawers
+│   ├── components/
+│   │   ├── CanvasEmptyState.tsx     # Clean empty-state view with one-click actions
+│   │   ├── CitationInspectorModal.tsx # Verbatim page excerpt inspector & canvas focus
+│   │   ├── CodeExperimentNode.tsx   # Canvas node displaying validated benchmarks
+│   │   ├── ConfirmModal.tsx         # Accessible confirmation dialog for destructive actions
+│   │   ├── DiscoveryDrawer.tsx      # Academic literature discovery search UI
+│   │   ├── DiscoveryNode.tsx        # Canvas node for discovered papers
+│   │   ├── ExperimentModal.tsx      # HITL review & execution sandbox modal
+│   │   ├── ExperimentsStudio.tsx    # Dedicated lab view for simulation run history
+│   │   ├── ExportModal.tsx          # Export dialog for Markdown and BibTeX
+│   │   ├── FloatingCanvasToolbar.tsx # Floating HUD toolbar: Search flyout, filters, tidy, undo/redo
+│   │   ├── FormattedPlainText.tsx   # Markdown table & citation badge parser
+│   │   ├── HomeDashboard.tsx        # Overview dashboard with workspace switcher & metrics
+│   │   ├── NodeDetailsInspector.tsx # Flyout inspector for selected node attributes
+│   │   ├── PaperNode.tsx            # Canvas node for indexed research papers
+│   │   ├── ResearchLibrary.tsx      # Tabular literature catalog with search & filters
+│   │   ├── ResizableNodeFrame.tsx   # Interactive resize handles for graph nodes
+│   │   ├── SettingsModal.tsx        # Studio preferences & ChromaDB memory inspector
+│   │   ├── SidebarNav.tsx           # Multi-view sidebar navigation
+│   │   ├── Toast.tsx                # Non-intrusive action notifications
+│   │   └── WorkspaceNodes.tsx       # Notes, syntheses, and research gap nodes
+│   └── package.json                 # Next.js 16, ReactFlow, Tailwind CSS 4 dependencies
+├── FINAL_REPORT.md                  # Comprehensive technical project final report
+└── README.md                        # Quickstart documentation & system guide
+```
+
+---
+
+## License
+
+This project is licensed under the Apache 2.0 License.

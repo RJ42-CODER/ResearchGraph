@@ -142,8 +142,8 @@ export function DiscoveryDrawer({
       {/* Drawer Header */}
       <div className="h-16 px-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/90 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-cyan-950/90 border border-cyan-800/80 flex items-center justify-center text-cyan-400 shadow-sm">
-            <Globe className="w-4.5 h-4.5" />
+          <div className="w-8 h-8 rounded-xl bg-white/10 border border-white/20 text-white [html[data-theme='light']_&]:bg-black/5 [html[data-theme='light']_&]:border-black/20 [html[data-theme='light']_&]:text-black flex items-center justify-center shadow-sm">
+            <Globe className="w-4.5 h-4.5 text-current" />
           </div>
           <div>
             <h2 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
@@ -210,7 +210,7 @@ export function DiscoveryDrawer({
             <button
               type="submit"
               disabled={loading || !query.trim()}
-              className="h-9 px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:scale-[0.98] disabled:opacity-50 text-xs font-semibold text-white transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className="btn-primary-mono h-9 px-4 rounded-lg active:scale-[0.98] disabled:opacity-40 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               {loading ? (
                 <>
@@ -239,19 +239,30 @@ export function DiscoveryDrawer({
       {/* Results List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {loading && (
-          <div className="space-y-3.5 pt-4">
-            <div className="flex flex-col items-center justify-center gap-2.5 text-zinc-400 py-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-cyan-400" />
-              <span className="text-xs font-medium">Querying academic literature indices...</span>
+          <div className="space-y-3 pt-2">
+            <div className="flex flex-col items-center justify-center gap-2.5 text-zinc-400 py-6">
+              <RefreshCw className="w-5 h-5 animate-spin text-current" />
+              <span className="text-xs font-medium">Resolving OpenAlex & Crossref literature indices...</span>
             </div>
-            {[1, 2, 3].map((n) => (
+            {[1, 2, 3, 4].map((n) => (
               <div
                 key={n}
-                className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/30 animate-pulse space-y-3"
+                className="p-4 rounded-xl border border-zinc-800/80 bg-zinc-950/70 shadow-lg animate-pulse space-y-3"
               >
-                <div className="h-4 bg-zinc-800 rounded w-3/4" />
-                <div className="h-3 bg-zinc-800/70 rounded w-1/2" />
-                <div className="h-3 bg-zinc-800/40 rounded w-full" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-16 bg-zinc-800 rounded-full" />
+                    <div className="h-4 w-20 bg-zinc-800/60 rounded-full" />
+                    <div className="h-4 w-10 bg-zinc-800/40 rounded-full" />
+                  </div>
+                  <div className="h-6 w-16 bg-zinc-800/70 rounded-lg" />
+                </div>
+                <div className="h-4 bg-zinc-800 rounded w-4/5" />
+                <div className="h-3 bg-zinc-800/60 rounded w-1/2" />
+                <div className="space-y-1.5 pt-1">
+                  <div className="h-2.5 bg-zinc-800/40 rounded w-full" />
+                  <div className="h-2.5 bg-zinc-800/30 rounded w-5/6" />
+                </div>
               </div>
             ))}
           </div>
@@ -287,8 +298,8 @@ export function DiscoveryDrawer({
 
         {!loading && !error && !hasSearched && (
           <div className="text-center py-24 space-y-3.5 text-zinc-500">
-            <div className="w-12 h-12 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-zinc-400 shadow-sm">
-              <Search className="w-6 h-6 text-cyan-400" />
+            <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/20 text-white [html[data-theme='light']_&]:bg-black/5 [html[data-theme='light']_&]:border-black/20 [html[data-theme='light']_&]:text-black flex items-center justify-center mx-auto shadow-sm">
+              <Search className="w-6 h-6 text-current" />
             </div>
             <div className="space-y-1.5">
               <p className="text-sm font-semibold text-zinc-200">
@@ -346,8 +357,8 @@ export function DiscoveryDrawer({
                     disabled={added}
                     className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer active:scale-[0.98] ${
                       added
-                        ? "bg-emerald-950/80 border border-emerald-700/80 text-emerald-300 cursor-default"
-                        : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-sm hover:ring-2 hover:ring-cyan-400/30"
+                        ? "btn-glass-mono opacity-80 cursor-default"
+                        : "btn-primary-mono shadow-sm"
                     }`}
                   >
                     {added ? (

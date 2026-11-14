@@ -48,8 +48,8 @@ export function DiscoveryNode({
       className="rounded-xl border border-cyan-800/80 bg-zinc-950/95 p-4.5 shadow-2xl backdrop-blur-md transition-colors hover:border-cyan-500 text-left"
     >
       {/* Header: Provider & Badges */}
-      <div className="flex items-center justify-between pb-2.5 border-b border-zinc-800/80 shrink-0 cursor-grab active:cursor-grabbing">
-        <div className="flex items-center gap-1.5 text-cyan-400">
+      <div className="flex items-center justify-between pb-2.5 border-b border-zinc-800/80 [html[data-theme='light']_&]:border-slate-200 shrink-0 cursor-grab active:cursor-grabbing">
+        <div className="flex items-center gap-1.5 text-cyan-400 [html[data-theme='light']_&]:text-cyan-700">
           <Globe className="w-4 h-4 shrink-0" />
           <span className="text-[11px] font-bold uppercase tracking-wider">
             {data.provider || "Academic"}
@@ -58,19 +58,19 @@ export function DiscoveryNode({
 
         <div className="flex items-center gap-1.5">
           {data.is_oa ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 shadow-sm">
-              <Unlock className="w-2.5 h-2.5 text-emerald-400" />
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 shadow-sm [html[data-theme='light']_&]:bg-emerald-50 [html[data-theme='light']_&]:text-emerald-950 [html[data-theme='light']_&]:border-emerald-200">
+              <Unlock className="w-2.5 h-2.5 text-emerald-400 [html[data-theme='light']_&]:text-emerald-700" />
               <span>OA</span>
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-400 border border-zinc-800">
-              <Lock className="w-2.5 h-2.5 text-zinc-400" />
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-400 border border-zinc-800 [html[data-theme='light']_&]:bg-slate-100 [html[data-theme='light']_&]:text-slate-900 [html[data-theme='light']_&]:border-slate-300">
+              <Lock className="w-2.5 h-2.5 text-zinc-400 [html[data-theme='light']_&]:text-slate-600" />
               <span>Closed</span>
             </span>
           )}
 
           {data.year && (
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-300 border border-zinc-800">
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-300 border border-zinc-800 [html[data-theme='light']_&]:bg-slate-100 [html[data-theme='light']_&]:text-slate-900 [html[data-theme='light']_&]:border-slate-300">
               {data.year}
             </span>
           )}

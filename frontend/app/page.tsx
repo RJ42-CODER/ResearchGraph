@@ -8,6 +8,7 @@ import {
   useReactFlow,
   Controls,
   Background,
+  MiniMap,
   applyNodeChanges,
   applyEdgeChanges,
   addEdge,
@@ -42,6 +43,8 @@ import {
   Download,
   FileText,
   BookOpen,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 import { DiscoveryDrawer, DiscoveredPaperItem } from "../components/DiscoveryDrawer";
@@ -52,6 +55,19 @@ import { CodeExperimentNode } from "../components/CodeExperimentNode";
 import { ExperimentModal } from "../components/ExperimentModal";
 import { ExportModal } from "../components/ExportModal";
 import { CitationInspectorModal, CitationPayload } from "../components/CitationInspectorModal";
+import { ToastContainer, ToastNotification } from "../components/Toast";
+import { SettingsModal } from "../components/SettingsModal";
+import {
+  FloatingCanvasToolbar,
+  NodeFilterCategory,
+} from "../components/FloatingCanvasToolbar";
+import { NodeDetailsInspector } from "../components/NodeDetailsInspector";
+import { ConfirmModal } from "../components/ConfirmModal";
+import { CanvasEmptyState } from "../components/CanvasEmptyState";
+import { SidebarNav, AppViewKind } from "../components/SidebarNav";
+import { HomeDashboard } from "../components/HomeDashboard";
+import { ResearchLibrary } from "../components/ResearchLibrary";
+import { ExperimentsStudio } from "../components/ExperimentsStudio";
 import {
   NoteNode,
   ResearchGapNode,
@@ -61,7 +77,7 @@ import {
 } from "../components/WorkspaceNodes";
 
 const BACKEND_URL = "http://localhost:8000";
-type DrawerKind = "none" | "discovery" | "assistant";
+type DrawerKind = "none" | "discovery" | "assistant" | "inspector";
 const DRAWER_TRANSITION_MS = 220;
 
 interface WorkspaceProject {
@@ -81,6 +97,140 @@ function getEditableNodeTitle(node: Node): string {
   }
   if (title) return title;
   return label.replace(/^📄\s*/, "");
+}
+
+function sanitizeNode(node: Node): Node {
+  const x = Number(node.position?.x);
+  const y = Number(node.position?.y);
+  return {
+    ...node,
+    position: {
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+    },
+  };
+}
+
+function getNodeFilterCategory(node: Node): NodeFilterCategory {
+  const rawType = (node.type || node.data?._node_type || "").toString();
+  const id = node.id;
+  if (
+    rawType === "paper" ||
+    rawType === "uploadedPaper" ||
+    rawType === "discovery" ||
+    id.startsWith("paper") ||
+    id.startsWith("discovery")
+  ) {
+    return "papers";
+  }
+  if (
+    rawType === "synth" ||
+    rawType === "synthesisResult" ||
+    rawType === "synthesisTask" ||
+    id.startsWith("synth")
+  ) {
+    return "syntheses";
+  }
+  if (
+    rawType === "gap" ||
+    rawType === "researchGap" ||
+    id.startsWith("gap")
+  ) {
+    return "gaps";
+  }
+  if (
+    rawType === "experiment" ||
+    rawType === "codeExperiment" ||
+    rawType === "result" ||
+    id.startsWith("exp") ||
+    id.startsWith("result")
+  ) {
+    return "experiments";
+  }
+  if (
+    rawType === "note" ||
+    id.startsWith("note") ||
+    node.data?.type === "note"
+  ) {
+    return "notes";
+  }
+  return "all";
+}
+
+function formatDomainEdge(
+  edge: Edge,
+  enableAnimatedEdges: boolean = true,
+  theme: "dark" | "light" = "dark"
+): Edge {
+  const edgeData = (edge.data as Record<string, unknown> | undefined) || {};
+  const rawRelation = (
+    edgeData.relation ||
+    edge.label ||
+    ""
+  ).toString().toLowerCase();
+
+  let relation = "references";
+  let strokeColor = "#6366f1"; // Indigo-500
+  let strokeDasharray: string | undefined = undefined;
+  let isAnimated = false;
+
+  if (
+    rawRelation.includes("synth") ||
+    edge.id.includes("synth") ||
+    edge.target.startsWith("synth")
+  ) {
+    relation = "synthesizes";
+    strokeColor = "#a855f7"; // Purple-500
+    strokeDasharray = enableAnimatedEdges ? "5,5" : undefined;
+    isAnimated = enableAnimatedEdges;
+  } else if (
+    rawRelation.includes("bench") ||
+    rawRelation.includes("tested") ||
+    rawRelation.includes("exp") ||
+    rawRelation.includes("code") ||
+    edge.id.includes("exp") ||
+    edge.target.startsWith("exp") ||
+    edge.target.startsWith("result")
+  ) {
+    relation = "benchmark";
+    strokeColor = "#06b6d4"; // Cyan-500
+    strokeDasharray = undefined;
+    isAnimated = enableAnimatedEdges;
+  } else {
+    relation = "references";
+    strokeColor = "#6366f1"; // Indigo-500
+    strokeDasharray = undefined;
+    isAnimated = false;
+  }
+
+  return {
+    ...edge,
+    label: edge.label || relation,
+    animated: enableAnimatedEdges ? (edge.animated ?? isAnimated) : false,
+    style: {
+      ...(edge.style || {}),
+      stroke: strokeColor,
+      strokeWidth: 2,
+      strokeDasharray,
+    },
+    labelStyle: {
+      fill: theme === "light" ? "#18181b" : "#f4f4f5",
+      fontWeight: 600,
+      fontSize: 10,
+      fontFamily: "ui-monospace, monospace",
+      ...(edge.labelStyle || {}),
+    },
+    labelBgStyle: {
+      fill: theme === "light" ? "#ffffff" : "#09090b",
+      fillOpacity: 1,
+      stroke: strokeColor,
+      strokeWidth: 1,
+      rx: 6,
+      ry: 6,
+      ...(edge.labelBgStyle || {}),
+    },
+    labelBgPadding: [6, 2] as [number, number],
+  };
 }
 
 function createNoteNode(
@@ -159,7 +309,7 @@ const NODE_TYPES: NodeTypes = {
 };
 
 function WorkspaceCanvas() {
-  const { screenToFlowPosition, fitView, setCenter } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter, zoomIn, zoomOut } = useReactFlow();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -313,7 +463,6 @@ function WorkspaceCanvas() {
   // Step 5: Traceable Citations & Export State
   const [citationModal, setCitationModal] = useState<CitationPayload | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [exportFeedback, setExportFeedback] = useState<string | null>(null);
   const [experimentTargetNode, setExperimentTargetNode] = useState<{
     id: string;
     title: string;
@@ -322,6 +471,128 @@ function WorkspaceCanvas() {
     summary?: string;
   } | null>(null);
   const [isExperimentModalOpen, setIsExperimentModalOpen] = useState(false);
+
+  // Phase 1: Canvas Toolbar & Node Details Inspector State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedFilter, setSelectedFilter] = useState<NodeFilterCategory>("all");
+  const [saveStatus, setSaveStatus] = useState<"saved" | "syncing">("saved");
+  const [selectedInspectorNode, setSelectedInspectorNode] = useState<Node | null>(null);
+
+  // Phase 2: App Shell & Studio Views State (Default to graph view)
+  const [currentView, setCurrentView] = useState<AppViewKind>("graph");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Safety Confirmation Dialog State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
+
+  // Phase 3: Universal Notification Toasts State
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+
+  const showToast = useCallback(
+    (
+      message: string,
+      type: "success" | "info" | "error" | "warning" = "info",
+      title?: string,
+    ) => {
+      const id = "toast_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+      setToasts((prev) => [...prev, { id, message, type, title }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 4000);
+    },
+    [],
+  );
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Phase 4: Layout Undo / Redo Stacks (node positions only)
+  const [undoStack, setUndoStack] = useState<Array<Record<string, { x: number; y: number }>>>([]);
+  const [redoStack, setRedoStack] = useState<Array<Record<string, { x: number; y: number }>>>([]);
+  const dragStartPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
+
+  // Phase 4: Studio Preferences State (persisted in localStorage)
+  const [showMiniMap, setShowMiniMap] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("research_graph_show_minimap");
+      if (saved !== null) return saved === "true";
+    }
+    return true;
+  });
+
+  const [animatedEdges, setAnimatedEdges] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("research_graph_animated_edges");
+      if (saved !== null) return saved === "true";
+    }
+    return true;
+  });
+
+  const [compactNodes, setCompactNodes] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("research_graph_compact_nodes");
+      if (saved !== null) return saved === "true";
+    }
+    return false;
+  });
+
+  const handleToggleMiniMap = useCallback((show: boolean) => {
+    setShowMiniMap(show);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("research_graph_show_minimap", String(show));
+    }
+  }, []);
+
+  const handleToggleAnimatedEdges = useCallback((animated: boolean) => {
+    setAnimatedEdges(animated);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("research_graph_animated_edges", String(animated));
+    }
+  }, []);
+
+  const handleToggleCompactNodes = useCallback((compact: boolean) => {
+    setCompactNodes(compact);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("research_graph_compact_nodes", String(compact));
+    }
+  }, []);
+
+  // Settings & Memory Modal State
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsModalTab, setSettingsModalTab] = useState<"settings" | "memory">("settings");
+
+  // Icon-Only Theme state: "dark" | "light" (defaults to "dark", persisted in localStorage)
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("researchgraph_theme") as "dark" | "light" | null;
+    const initialTheme = saved === "light" ? "light" : "dark";
+    setTheme(initialTheme);
+    document.documentElement.setAttribute("data-theme", initialTheme);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const nextTheme = prev === "dark" ? "light" : "dark";
+      localStorage.setItem("researchgraph_theme", nextTheme);
+      document.documentElement.setAttribute("data-theme", nextTheme);
+      return nextTheme;
+    });
+  }, []);
 
   const activeProject = useMemo(() => {
     return (
@@ -366,10 +637,437 @@ function WorkspaceCanvas() {
     [],
   );
 
+  const onNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      setSelectedInspectorNode(node);
+      selectDrawer("inspector");
+    },
+    [selectDrawer]
+  );
+
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
-    const currentTitle = getEditableNodeTitle(node);
-    setEditingNode({ id: node.id, currentTitle });
-    setNewTitleInput(currentTitle);
+    const rawType = (node.type || node.data?._node_type || "").toString();
+    const isPaperOrGap =
+      rawType === "paper" ||
+      rawType === "uploadedPaper" ||
+      rawType === "discovery" ||
+      rawType === "gap" ||
+      rawType === "researchGap" ||
+      node.id.startsWith("paper") ||
+      node.id.startsWith("discovery") ||
+      node.id.startsWith("gap");
+
+    if (isPaperOrGap) {
+      const data = (node.data as Record<string, unknown>) || {};
+      setExperimentTargetNode({
+        id: node.id,
+        title: String(data.title || data.label || node.id),
+        paper_id: String(data.paper_id || node.id),
+        abstract: String(data.abstract || ""),
+        summary: String(data.summary || ""),
+      });
+      setIsExperimentModalOpen(true);
+    } else {
+      const currentTitle = getEditableNodeTitle(node);
+      setEditingNode({ id: node.id, currentTitle });
+      setNewTitleInput(currentTitle);
+    }
+  }, []);
+
+  const nodeCounts = useMemo(() => {
+    let papers = 0;
+    let syntheses = 0;
+    let gaps = 0;
+    let experiments = 0;
+    let notes = 0;
+
+    for (const node of nodes) {
+      const cat = getNodeFilterCategory(node);
+      if (cat === "papers") papers++;
+      else if (cat === "syntheses") syntheses++;
+      else if (cat === "gaps") gaps++;
+      else if (cat === "experiments") experiments++;
+      else if (cat === "notes") notes++;
+    }
+
+    return {
+      all: nodes.length,
+      papers,
+      syntheses,
+      gaps,
+      experiments,
+      notes,
+    };
+  }, [nodes]);
+
+  const matchingSearchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase();
+    return nodes
+      .filter((n) => {
+        const title = String(n.data?.title || n.data?.label || n.id).toLowerCase();
+        const summary = String(n.data?.summary || n.data?.abstract || "").toLowerCase();
+        return title.includes(q) || summary.includes(q);
+      })
+      .map((n) => ({
+        id: n.id,
+        title: String(n.data?.title || n.data?.label || n.id),
+        type: (n.type || "paper") as string,
+      }))
+      .slice(0, 8);
+  }, [nodes, searchQuery]);
+
+  const displayNodes = useMemo(() => {
+    const sanitizedNodes = nodes.map(sanitizeNode);
+    if (selectedFilter === "all" && !searchQuery.trim()) {
+      return sanitizedNodes;
+    }
+    const q = searchQuery.trim().toLowerCase();
+
+    return sanitizedNodes.map((node) => {
+      const cat = getNodeFilterCategory(node);
+      const matchesFilter = selectedFilter === "all" || cat === selectedFilter;
+
+      let matchesSearch = true;
+      if (q) {
+        const title = String(node.data?.title || node.data?.label || node.id).toLowerCase();
+        const summary = String(node.data?.summary || node.data?.abstract || "").toLowerCase();
+        matchesSearch = title.includes(q) || summary.includes(q);
+      }
+
+      const isMatch = matchesFilter && matchesSearch;
+
+      if (isMatch) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            isCompact: compactNodes,
+          },
+          style: {
+            ...node.style,
+            opacity: 1,
+            transition: "opacity 0.2s ease",
+          },
+        };
+      }
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          isCompact: compactNodes,
+        },
+        style: {
+          ...node.style,
+          opacity: 0.22,
+          filter: "grayscale(60%)",
+          transition: "opacity 0.2s ease",
+        },
+      };
+    });
+  }, [nodes, selectedFilter, searchQuery, compactNodes]);
+
+  // Phase 3 & 4: Domain-specific edge styling with animated edges preference
+  const displayEdges = useMemo(() => {
+    return edges.map((e) => formatDomainEdge(e, animatedEdges, theme));
+  }, [edges, animatedEdges, theme]);
+
+  // Phase 4: Layout Undo & Redo Handlers
+  const handleUndo = useCallback(async () => {
+    if (undoStack.length === 0) return;
+    const targetSnapshot = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+
+    const currentSnapshot: Record<string, { x: number; y: number }> = {};
+    nodes.forEach((n) => {
+      currentSnapshot[n.id] = { x: n.position.x, y: n.position.y };
+    });
+    setRedoStack((prev) => [...prev.slice(-19), currentSnapshot]);
+
+    const updatedNodes = nodes.map((n) => {
+      if (targetSnapshot[n.id]) {
+        return {
+          ...n,
+          position: targetSnapshot[n.id],
+        };
+      }
+      return n;
+    });
+    setNodes(updatedNodes);
+
+    setSaveStatus("syncing");
+    try {
+      await Promise.all(
+        updatedNodes
+          .filter((n) => targetSnapshot[n.id])
+          .map((n) =>
+            fetch(`${BACKEND_URL}/api/workspace/node`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: n.id,
+                type: n.type || "uploadedPaper",
+                position: n.position,
+                project_id: activeProjectIdRef.current,
+                data: n.data,
+              }),
+            })
+          )
+      );
+      setSaveStatus("saved");
+      showToast("Undone layout movement.", "info", "Layout Undone");
+    } catch (e) {
+      console.warn("Failed to sync undone positions:", e);
+      setSaveStatus("saved");
+    }
+  }, [undoStack, nodes, showToast]);
+
+  const handleRedo = useCallback(async () => {
+    if (redoStack.length === 0) return;
+    const targetSnapshot = redoStack[redoStack.length - 1];
+    setRedoStack((prev) => prev.slice(0, -1));
+
+    const currentSnapshot: Record<string, { x: number; y: number }> = {};
+    nodes.forEach((n) => {
+      currentSnapshot[n.id] = { x: n.position.x, y: n.position.y };
+    });
+    setUndoStack((prev) => [...prev.slice(-19), currentSnapshot]);
+
+    const updatedNodes = nodes.map((n) => {
+      if (targetSnapshot[n.id]) {
+        return {
+          ...n,
+          position: targetSnapshot[n.id],
+        };
+      }
+      return n;
+    });
+    setNodes(updatedNodes);
+
+    setSaveStatus("syncing");
+    try {
+      await Promise.all(
+        updatedNodes
+          .filter((n) => targetSnapshot[n.id])
+          .map((n) =>
+            fetch(`${BACKEND_URL}/api/workspace/node`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: n.id,
+                type: n.type || "uploadedPaper",
+                position: n.position,
+                project_id: activeProjectIdRef.current,
+                data: n.data,
+              }),
+            })
+          )
+      );
+      setSaveStatus("saved");
+      showToast("Redone layout movement.", "info", "Layout Redone");
+    } catch (e) {
+      console.warn("Failed to sync redone positions:", e);
+      setSaveStatus("saved");
+    }
+  }, [redoStack, nodes, showToast]);
+
+  // Phase 3 & 4: Safe Global Keyboard Shortcuts Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isTyping =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.getAttribute("contenteditable") === "true");
+
+      if (isTyping) {
+        if (e.key === "Escape") {
+          (activeEl as HTMLElement).blur();
+        }
+        return; // Ignore canvas shortcuts while typing in inputs
+      }
+
+      // 1. Cmd+K or Ctrl+K: Focus canvas search input and switch to graph
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (currentView !== "graph") {
+          setCurrentView("graph");
+        }
+        setTimeout(() => {
+          const searchInput = document.getElementById(
+            "canvas-search-input"
+          ) as HTMLInputElement | null;
+          if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
+          }
+        }, 50);
+        return;
+      }
+
+      // 2. Undo: Ctrl+Z / Cmd+Z without Shift
+      if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // 3. Redo: Ctrl+Shift+Z / Cmd+Shift+Z or Ctrl+Y / Cmd+Y
+      if (
+        ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z") && e.shiftKey) ||
+        ((e.metaKey || e.ctrlKey) && (e.key === "y" || e.key === "Y"))
+      ) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      // 4. Esc: Close open drawers without interfering with typing or modals
+      if (e.key === "Escape") {
+        if (
+          isExperimentModalOpen ||
+          editingNode ||
+          citationModal ||
+          confirmModal.isOpen ||
+          isExportModalOpen ||
+          isSettingsModalOpen
+        ) {
+          return;
+        }
+
+        if (openDrawer !== "none") {
+          selectDrawer("none");
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    currentView,
+    openDrawer,
+    selectDrawer,
+    isExperimentModalOpen,
+    editingNode,
+    citationModal,
+    confirmModal.isOpen,
+    isExportModalOpen,
+    isSettingsModalOpen,
+    handleUndo,
+    handleRedo,
+  ]);
+
+  const handleFocusNode = useCallback(
+    (nodeId: string) => {
+      const target = nodes.find((n) => n.id === nodeId);
+      if (!target) return;
+      setCenter(target.position.x + 160, target.position.y + 120, {
+        zoom: 1.15,
+        duration: 600,
+      });
+      setSelectedInspectorNode(target);
+      selectDrawer("inspector");
+    },
+    [nodes, setCenter, selectDrawer]
+  );
+
+  const handleTidyLayout = useCallback(async () => {
+    if (nodes.length === 0) return;
+    const snapshot: Record<string, { x: number; y: number }> = {};
+    nodes.forEach((n) => {
+      snapshot[n.id] = { x: n.position.x, y: n.position.y };
+    });
+    setUndoStack((prev) => [...prev.slice(-19), snapshot]);
+    setRedoStack([]);
+    setSaveStatus("syncing");
+
+    const categoryColumns: Record<NodeFilterCategory, number> = {
+      all: 80,
+      papers: 80,
+      syntheses: 540,
+      gaps: 1000,
+      experiments: 1460,
+      notes: 1920,
+    };
+
+    const counters: Record<string, number> = {
+      papers: 0,
+      syntheses: 0,
+      gaps: 0,
+      experiments: 0,
+      notes: 0,
+    };
+
+    const newNodes = nodes.map((n) => {
+      const cat = getNodeFilterCategory(n);
+      const targetCat = cat === "all" ? "papers" : cat;
+      const colX = categoryColumns[targetCat] || 80;
+      const rowIndex = counters[targetCat] || 0;
+      counters[targetCat] = rowIndex + 1;
+      const rowY = 100 + rowIndex * 280;
+
+      return {
+        ...n,
+        position: { x: colX, y: rowY },
+      };
+    });
+
+    setNodes(newNodes);
+
+    try {
+      await Promise.all(
+        newNodes.map((n) =>
+          fetch(`${BACKEND_URL}/api/workspace/node`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: n.id,
+              type: n.type || "paper",
+              position: n.position,
+              project_id: activeProjectIdRef.current,
+              data: n.data,
+            }),
+          })
+        )
+      );
+      setSaveStatus("saved");
+      showToast("Arranged hierarchical graph layout and persisted positions.", "success", "Layout Arranged");
+    } catch (e) {
+      console.warn("Failed to persist tidy positions:", e);
+      setSaveStatus("saved");
+    }
+
+    setTimeout(() => {
+      fitView({ duration: 600, padding: 0.2 });
+    }, 50);
+  }, [nodes, fitView, showToast]);
+
+  const handleAddStandaloneNote = useCallback(() => {
+    const id = `note-${Date.now()}`;
+    const newNote: Node = {
+      id,
+      type: "note",
+      position: { x: 300, y: 200 },
+      data: {
+        title: "Research Idea",
+        label: "Research Idea",
+        type: "note",
+      },
+    };
+    setNodes((prev) => [...prev, newNote]);
+    fetch(`${BACKEND_URL}/api/workspace/node`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: newNote.id,
+        type: "note",
+        position: newNote.position,
+        project_id: activeProjectIdRef.current,
+        data: newNote.data,
+      }),
+    }).catch((e) => console.warn("Failed to persist standalone note:", e));
   }, []);
 
   const fetchProjects = useCallback(async () => {
@@ -677,7 +1375,7 @@ function WorkspaceCanvas() {
           };
         });
 
-        setNodes(styledNodes);
+        setNodes(styledNodes.map(sanitizeNode));
         setEdges(data.edges || []);
         setTimeout(() => {
           fitView({ padding: 0.25, duration: 400 });
@@ -742,36 +1440,70 @@ function WorkspaceCanvas() {
     }
   }, [newProjectName, newProjectDesc, fetchProjects, handleSwitchProject]);
 
-  const handleDeleteProject = useCallback(async (e: React.MouseEvent, projectId: string) => {
+  const performDeleteProject = useCallback(
+    async (projectId: string) => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/workspace/projects/${projectId}`, {
+          method: "DELETE",
+        });
+        if (res.ok) {
+          showToast("Workspace deleted successfully.", "info", "Workspace Removed");
+          if (activeProjectIdRef.current === projectId) {
+            if (typeof window !== "undefined") {
+              localStorage.setItem("research_graph_active_project", "default");
+            }
+            handleSwitchProject("default");
+          } else {
+            fetchProjects();
+          }
+        }
+      } catch (e) {
+        console.error("Failed to delete project:", e);
+      }
+    },
+    [handleSwitchProject, fetchProjects, showToast]
+  );
+
+  const handleDeleteProject = useCallback((e: React.MouseEvent, projectId: string) => {
     e.stopPropagation();
     if (projectId === "default") return;
-    if (!confirm("Are you sure you want to delete this workspace and all its nodes?")) return;
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/workspace/projects/${projectId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        if (activeProjectIdRef.current === projectId) {
-          if (typeof window !== "undefined") {
-            localStorage.setItem("research_graph_active_project", "default");
-          }
-          handleSwitchProject("default");
-        } else {
-          fetchProjects();
-        }
-      }
-    } catch (e) {
-      console.error("Failed to delete project:", e);
-    }
-  }, [handleSwitchProject, fetchProjects]);
+    const proj = projects.find((p) => p.id === projectId);
+    const projName = proj ? proj.name : "this workspace";
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete Workspace",
+      message: `Are you sure you want to permanently delete "${projName}" and all associated nodes and edges? This action cannot be undone.`,
+      confirmLabel: "Delete Workspace",
+      isDestructive: true,
+      onConfirm: () => performDeleteProject(projectId),
+    });
+  }, [projects, performDeleteProject]);
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
     [],
   );
 
+  const onNodeDragStart = useCallback(() => {
+    const snapshot: Record<string, { x: number; y: number }> = {};
+    nodes.forEach((n) => {
+      snapshot[n.id] = { x: n.position.x, y: n.position.y };
+    });
+    dragStartPositionsRef.current = snapshot;
+  }, [nodes]);
+
   const onNodeDragStop = useCallback(
     async (_event: unknown, node: Node) => {
+      const prevPos = dragStartPositionsRef.current[node.id];
+      if (
+        prevPos &&
+        (Math.abs(prevPos.x - node.position.x) > 3 ||
+          Math.abs(prevPos.y - node.position.y) > 3)
+      ) {
+        setUndoStack((prev) => [...prev.slice(-19), dragStartPositionsRef.current]);
+        setRedoStack([]);
+      }
+      setSaveStatus("syncing");
       try {
         await fetch(`${BACKEND_URL}/api/workspace/node`, {
           method: "POST",
@@ -784,8 +1516,10 @@ function WorkspaceCanvas() {
             data: node.data,
           }),
         });
+        setSaveStatus("saved");
       } catch (e) {
         console.warn("Failed to persist dragged node position:", e);
+        setSaveStatus("saved");
       }
     },
     []
@@ -811,12 +1545,38 @@ function WorkspaceCanvas() {
 
   const onConnect: OnConnect = useCallback(async (connection) => {
     const edgeId = `e-${connection.source}-${connection.target}`;
+    
+    // Auto-detect domain relation based on target node
+    const targetNode = nodes.find((n) => n.id === connection.target);
+    const targetType = (targetNode?.type || targetNode?.data?._node_type || "").toString();
+
+    let relation = "references";
+    let strokeColor = "#6366f1";
+    let strokeDasharray: string | undefined = undefined;
+    let animated = false;
+
+    if (targetType.includes("synth") || (connection.target && connection.target.startsWith("synth"))) {
+      relation = "synthesizes";
+      strokeColor = "#a855f7";
+      strokeDasharray = "5,5";
+      animated = true;
+    } else if (
+      targetType.includes("exp") ||
+      targetType.includes("result") ||
+      (connection.target && (connection.target.startsWith("exp") || connection.target.startsWith("result")))
+    ) {
+      relation = "benchmark";
+      strokeColor = "#06b6d4";
+      animated = true;
+    }
+
     const newEdge: Edge = {
       ...connection,
       id: edgeId,
-      animated: true,
-      label: "references",
-      style: { stroke: "#818cf8", strokeWidth: 2 },
+      animated,
+      label: relation,
+      data: { relation },
+      style: { stroke: strokeColor, strokeWidth: 2, strokeDasharray },
     };
     setEdges((eds) => addEdge(newEdge, eds));
     try {
@@ -827,14 +1587,14 @@ function WorkspaceCanvas() {
           id: edgeId,
           source: connection.source,
           target: connection.target,
-          label: "references",
+          label: relation,
           project_id: activeProjectId,
         }),
       });
     } catch (e) {
       console.error("Save edge error:", e);
     }
-  }, [activeProjectId]);
+  }, [activeProjectId, nodes]);
 
   const resetCanvas = async () => {
     try {
@@ -945,20 +1705,47 @@ function WorkspaceCanvas() {
     setMenu(null);
   };
 
-  const handleDeleteNode = async (nodeId: string) => {
-    setNodes((prev) => prev.filter((n) => n.id !== nodeId));
-    setEdges((prev) =>
-      prev.filter((e) => e.source !== nodeId && e.target !== nodeId),
-    );
-    setMenu(null);
-    try {
-      await fetch(`${BACKEND_URL}/api/workspace/node/${nodeId}`, {
-        method: "DELETE",
+  const performDeleteNode = useCallback(
+    async (nodeId: string) => {
+      setNodes((prev) => prev.filter((n) => n.id !== nodeId));
+      setEdges((prev) =>
+        prev.filter((e) => e.source !== nodeId && e.target !== nodeId),
+      );
+      if (selectedInspectorNode?.id === nodeId) {
+        setSelectedInspectorNode(null);
+        selectDrawer("none");
+      }
+      setMenu(null);
+      showToast("Node removed from canvas and workspace.", "info");
+      try {
+        await fetch(`${BACKEND_URL}/api/workspace/node/${nodeId}`, {
+          method: "DELETE",
+        });
+      } catch (e) {
+        console.error("Failed to delete node:", e);
+      }
+    },
+    [selectedInspectorNode, selectDrawer, showToast]
+  );
+
+  const promptDeleteNode = useCallback(
+    (nodeId: string) => {
+      setMenu(null);
+      const target = nodes.find((n) => n.id === nodeId);
+      const title = target
+        ? String(target.data?.title || target.data?.label || nodeId)
+        : "this node";
+      setConfirmModal({
+        isOpen: true,
+        title: "Delete Canvas Node",
+        message: `Are you sure you want to remove "${title}" from the canvas and workspace database?`,
+        confirmLabel: "Delete Node",
+        isDestructive: true,
+        onConfirm: () => performDeleteNode(nodeId),
       });
-    } catch (e) {
-      console.error(e);
-    }
-  };
+    },
+    [nodes, performDeleteNode]
+  );
 
   const handleOpenExperimentModal = (node: Node) => {
     setExperimentTargetNode({
@@ -1073,11 +1860,12 @@ function WorkspaceCanvas() {
           }),
         });
         fetchProjects();
+        showToast("Benchmark results and simulation code saved to canvas.", "success", "Benchmark Saved");
       } catch (e) {
         console.warn("Failed to persist experiment node:", e);
       }
     },
-    [nodes, fetchProjects]
+    [nodes, fetchProjects, showToast]
   );
 
   const handleOpenChatForNode = (node: Node) => {
@@ -1486,8 +2274,10 @@ function WorkspaceCanvas() {
         }),
       });
       fetchProjects();
+      showToast(`Paper "${displayName}" indexed into ChromaDB knowledge base.`, "success", "Paper Ingested");
     } catch (err) {
       console.error("Upload error:", err);
+      showToast(`Failed to upload "${displayName}". Please verify backend status.`, "error", "Upload Failed");
     }
   };
 
@@ -1596,7 +2386,7 @@ function WorkspaceCanvas() {
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
-      className="relative w-screen h-screen flex flex-col bg-[#09090b] overflow-hidden"
+      className="relative w-screen h-screen flex flex-row bg-[#09090b] overflow-hidden"
     >
       <input
         type="file"
@@ -1609,6 +2399,31 @@ function WorkspaceCanvas() {
         }}
       />
 
+      {/* Phase 2: Collapsible Left Sidebar Rail */}
+      <SidebarNav
+        currentView={currentView}
+        onSelectView={(view) => setCurrentView(view)}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
+        nodeCount={nodes.length}
+        paperCount={nodeCounts.papers}
+        experimentCount={nodeCounts.experiments}
+        isAgentBusy={isAgentThinking}
+        activeProjectName={activeProject.name}
+        onOpenNewProjectModal={() => setIsNewProjectModalOpen(true)}
+        onOpenSettings={() => {
+          setSettingsModalTab("settings");
+          setIsSettingsModalOpen(true);
+        }}
+        onOpenMemory={() => {
+          setSettingsModalTab("memory");
+          setIsSettingsModalOpen(true);
+        }}
+      />
+
+      {/* Main Studio Work Area */}
+      <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
+
       {isDraggingOver && (
         <div className="absolute inset-0 z-50 bg-indigo-950/40 backdrop-blur-sm border-2 border-dashed border-indigo-500 pointer-events-none flex flex-col items-center justify-center gap-3">
           <UploadCloud className="w-12 h-12 text-indigo-400 animate-bounce" />
@@ -1619,29 +2434,29 @@ function WorkspaceCanvas() {
       )}
 
       {/* Top Header */}
-      <header className="relative z-30 h-16 shrink-0 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-sm px-4 xl:px-6 flex items-center justify-between gap-3">
+      <header className="relative z-30 h-16 shrink-0 border-b border-white/15 dark:border-white/15 bg-black/75 dark:bg-black/75 backdrop-blur-xl px-4 xl:px-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 shrink-0 relative">
-          <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-xs text-white shadow-sm">
+          <div className="w-7 h-7 rounded-lg bg-white text-black dark:bg-white dark:text-black flex items-center justify-center font-bold text-xs shadow-sm">
             R
           </div>
-          <span className="font-semibold text-sm text-zinc-100 tracking-tight whitespace-nowrap">
+          <span className="neon-brand-text text-sm tracking-tight whitespace-nowrap">
             ResearchGraph
           </span>
-          <span className="text-zinc-600 font-light hidden sm:inline">/</span>
+          <span className="text-zinc-500 font-light hidden sm:inline">/</span>
 
           {/* Workspace Switcher Dropdown */}
           <div className="relative">
             <button
               onClick={() => setIsProjectDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-200 transition cursor-pointer"
+              className="btn-glass-mono flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer"
               title="Switch research workspace project"
             >
-              <Folder className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <Folder className="w-3.5 h-3.5 shrink-0 opacity-80" />
               <span className="max-w-[120px] xl:max-w-[170px] truncate">{activeProject.name}</span>
-              <span className="text-[10px] text-zinc-400 bg-zinc-800/90 px-1.5 py-0.5 rounded-full border border-zinc-700/50">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-current opacity-70">
                 {activeProject.node_count ?? nodes.length}
               </span>
-              <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+              <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-80" />
             </button>
 
             {isProjectDropdownOpen && (
@@ -1650,7 +2465,7 @@ function WorkspaceCanvas() {
                   className="fixed inset-0 z-40"
                   onClick={() => setIsProjectDropdownOpen(false)}
                 />
-                <div className="absolute left-0 mt-2 w-72 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                <div className="glass-panel-mono absolute left-0 mt-2 w-72 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center justify-between">
                     <span>Workspaces</span>
                     <span className="text-zinc-500">{projects.length} total</span>
@@ -1664,32 +2479,32 @@ function WorkspaceCanvas() {
                           onClick={() => handleSwitchProject(p.id)}
                           className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs cursor-pointer transition ${
                             isActive
-                              ? "bg-indigo-950/60 text-indigo-200 border border-indigo-800/50"
-                              : "text-zinc-300 hover:bg-zinc-800/80 hover:text-zinc-100"
+                              ? "sidebar-nav-pill-active"
+                              : "sidebar-nav-pill-inactive"
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             {isActive ? (
-                              <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                              <Check className="w-3.5 h-3.5 shrink-0" />
                             ) : (
-                              <Folder className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                              <Folder className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                             )}
                             <div className="truncate">
                               <p className="font-medium truncate">{p.name}</p>
                               {p.description && (
-                                <p className="text-[10px] text-zinc-500 truncate">{p.description}</p>
+                                <p className="text-[10px] text-zinc-400 truncate">{p.description}</p>
                               )}
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0 ml-2">
-                            <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded-full">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-current opacity-70">
                               {p.node_count ?? 0}
                             </span>
                             {p.id !== "default" && (
                               <button
                                 onClick={(e) => handleDeleteProject(e, p.id)}
                                 title="Delete workspace"
-                                className="p-1 hover:text-rose-400 hover:bg-rose-950/50 rounded transition text-zinc-500"
+                                className="p-1 hover:text-rose-400 hover:bg-rose-950/50 rounded transition text-zinc-400"
                               >
                                 <Trash2 className="w-3 h-3" />
                               </button>
@@ -1699,13 +2514,13 @@ function WorkspaceCanvas() {
                       );
                     })}
                   </div>
-                  <div className="pt-1 border-t border-zinc-800/80">
+                  <div className="pt-1 border-t border-white/10">
                     <button
                       onClick={() => {
                         setIsProjectDropdownOpen(false);
                         setIsNewProjectModalOpen(true);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-indigo-400 hover:bg-indigo-950/40 hover:text-indigo-300 transition cursor-pointer"
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold hover:bg-white/[0.08] transition cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>+ Create New Workspace</span>
@@ -1717,69 +2532,94 @@ function WorkspaceCanvas() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 xl:gap-2.5 overflow-x-auto no-scrollbar px-1 py-1.5 min-w-0">
-          <button
-            onClick={resetCanvas}
-            title="Clear workspace"
-            className="flex items-center gap-1.5 h-[38px] px-3 xl:px-3.5 rounded-lg bg-zinc-900/90 hover:bg-rose-950/60 active:scale-[0.98] text-xs xl:text-[13px] font-medium text-zinc-300 hover:text-rose-300 border border-zinc-800 hover:border-rose-900/50 transition cursor-pointer select-none whitespace-nowrap shrink-0"
-          >
-            <RotateCcw className="w-4 h-4" /> Reset
-          </button>
+        <div className="flex items-center gap-1.5 xl:gap-2 overflow-x-auto no-scrollbar px-1 py-1.5 min-w-0">
+          {/* Canvas Creation Actions: ONLY shown in Knowledge Graph view */}
+          {currentView === "graph" && (
+            <>
+              <button
+                onClick={resetCanvas}
+                title="Clear workspace"
+                className="btn-glass-mono flex items-center gap-1.5 h-[34px] px-2.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer select-none whitespace-nowrap shrink-0 hover:border-rose-400/50 hover:text-rose-400"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Reset
+              </button>
 
-          {/* Research Discovery Hub Trigger */}
-          <button
-            onClick={() =>
-              selectDrawer(
-                desiredDrawer === "discovery" ? "none" : "discovery",
-              )
-            }
-            className={`flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg text-xs xl:text-[13px] font-medium text-white transition cursor-pointer select-none active:scale-[0.98] shadow-sm whitespace-nowrap shrink-0 ${
-              desiredDrawer === "discovery"
-                ? "bg-cyan-700 hover:bg-cyan-600 ring-2 ring-cyan-400/50"
-                : "bg-cyan-600 hover:bg-cyan-500"
-            }`}
-            title="Search academic literature (OpenAlex, Crossref, Unpaywall)"
-          >
-            <Search className="w-4 h-4" /> Discovery Hub
-          </button>
+              {/* Research Discovery Hub Trigger */}
+              <button
+                onClick={() =>
+                  selectDrawer(
+                    desiredDrawer === "discovery" ? "none" : "discovery",
+                  )
+                }
+                className={`btn-glass-mono flex items-center gap-1.5 h-[34px] px-2.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer select-none active:scale-[0.98] whitespace-nowrap shrink-0 ${
+                  desiredDrawer === "discovery"
+                    ? "ring-2 ring-white/60 font-semibold"
+                    : ""
+                }`}
+                title="Search academic literature (OpenAlex, Crossref, Unpaywall)"
+              >
+                <Search className="w-3.5 h-3.5" /> Discovery Hub
+              </button>
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-xs xl:text-[13px] font-medium text-white transition cursor-pointer select-none shadow-sm whitespace-nowrap shrink-0"
-          >
-            <Plus className="w-4 h-4" /> Add Paper
-          </button>
+              {/* Add Paper (Primary Action) */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="btn-primary-mono flex items-center gap-1.5 h-[34px] px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer select-none shadow-sm whitespace-nowrap shrink-0 active:scale-[0.98]"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Paper
+              </button>
 
-          <button
-            onClick={handleAddSynthesisNode}
-            className="flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg bg-purple-950/60 hover:bg-purple-900/60 active:scale-[0.98] text-xs xl:text-[13px] font-medium text-purple-200 border border-purple-800/60 transition cursor-pointer select-none whitespace-nowrap shrink-0"
-          >
-            <GitFork className="w-4 h-4" /> + Cross-Reference Task
-          </button>
+              {/* + Cross-Reference Task */}
+              <button
+                onClick={handleAddSynthesisNode}
+                className="btn-glass-mono flex items-center gap-1.5 h-[34px] px-2.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer select-none whitespace-nowrap shrink-0 active:scale-[0.98]"
+              >
+                <GitFork className="w-3.5 h-3.5" /> + Cross-Reference Task
+              </button>
 
-          <button
-            onClick={() => {
-              const noteId = `note-${Date.now()}`;
-              setNodes((prev) => [
-                ...prev,
-                createNoteNode(noteId, { x: 250, y: 150 }),
-              ]);
-            }}
-            className="flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg bg-zinc-900 hover:bg-zinc-800/90 active:scale-[0.98] text-xs xl:text-[13px] font-medium text-amber-300 border border-amber-900/50 transition cursor-pointer select-none whitespace-nowrap shrink-0"
-          >
-            <StickyNote className="w-4 h-4" /> + Add Note
-          </button>
+              {/* + Add Note */}
+              <button
+                onClick={() => {
+                  const noteId = `note-${Date.now()}`;
+                  setNodes((prev) => [
+                    ...prev,
+                    createNoteNode(noteId, { x: 250, y: 150 }),
+                  ]);
+                }}
+                className="btn-glass-mono flex items-center gap-1.5 h-[34px] px-2.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer select-none whitespace-nowrap shrink-0 active:scale-[0.98]"
+              >
+                <StickyNote className="w-3.5 h-3.5" /> + Add Note
+              </button>
+            </>
+          )}
 
+          {/* Persistent Action Buttons (rendered across ALL views) */}
           {/* Workspace Export Trigger */}
           <button
             onClick={() => setIsExportModalOpen(true)}
             title="Export research dossier (.md) or bibliography (.bib)"
-            className="flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg bg-zinc-900 hover:bg-emerald-950/60 active:scale-[0.98] text-xs xl:text-[13px] font-medium text-emerald-300 border border-emerald-900/50 hover:border-emerald-800/70 transition cursor-pointer select-none whitespace-nowrap shrink-0 shadow-sm"
+            className="btn-glass-mono flex items-center gap-1.5 h-[34px] px-2.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer select-none whitespace-nowrap shrink-0 shadow-sm active:scale-[0.98]"
           >
-            <Download className="w-4 h-4 text-emerald-400" />
+            <Download className="w-3.5 h-3.5" />
             <span>Export</span>
           </button>
 
+          {/* Icon-Only Dark / Light Theme Toggle */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            className="btn-glass-mono flex items-center justify-center w-[34px] h-[34px] rounded-lg transition cursor-pointer select-none shrink-0 shadow-sm"
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? (
+              <Sun className="w-3.5 h-3.5 transition-transform hover:rotate-45" />
+            ) : (
+              <Moon className="w-3.5 h-3.5 transition-transform hover:-rotate-12" />
+            )}
+          </button>
+
+          {/* Assistant Trigger (Primary Action Button) */}
           <button
             onClick={() => {
               const nextState = desiredDrawer === "assistant" ? "none" : "assistant";
@@ -1810,20 +2650,20 @@ function WorkspaceCanvas() {
                 }
               }
             }}
-            className={`relative flex items-center gap-1.5 h-[38px] px-3 xl:px-4 rounded-lg text-xs xl:text-[13px] font-medium text-white transition cursor-pointer select-none active:scale-[0.98] shadow-sm whitespace-nowrap shrink-0 ${
+            className={`btn-primary-mono relative flex items-center gap-1.5 h-[34px] px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer select-none active:scale-[0.98] shadow-sm whitespace-nowrap shrink-0 ${
               hasUnreadNotification
-                ? "bg-amber-600 hover:bg-amber-500 animate-pulse"
+                ? "ring-2 ring-amber-400 animate-pulse"
                 : desiredDrawer === "assistant"
-                  ? "bg-indigo-700 hover:bg-indigo-600 ring-2 ring-indigo-400/50"
-                  : "bg-indigo-600 hover:bg-indigo-500"
+                  ? "ring-2 ring-white/60 dark:ring-white/60 ring-black/40"
+                  : ""
             }`}
           >
-            <Bot className="w-4 h-4" />
+            <Bot className="w-3.5 h-3.5" />
             {activePaper
               ? `Chat (${activePaper.title.slice(0, 10)}...)`
               : "Assistant"}
             {hasUnreadNotification && (
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-200 animate-ping absolute -top-0.5 -right-0.5" />
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping absolute -top-0.5 -right-0.5" />
             )}
           </button>
         </div>
@@ -1831,30 +2671,98 @@ function WorkspaceCanvas() {
 
       {/* Workspace Body Below Header */}
       <div className="relative flex-1 min-h-0 flex overflow-hidden">
-        {/* Main Canvas */}
-        <main className="relative flex-1 min-w-0 h-full">
+        {/* View 1: Knowledge Graph Canvas (Always mounted with full dimensions to prevent SVG NaN) */}
+        <div
+          className={`w-full h-full flex flex-row ${
+            currentView === "graph"
+              ? "relative visible opacity-100 z-10"
+              : "absolute inset-0 invisible opacity-0 pointer-events-none -z-10"
+          }`}
+        >
+          {/* Main Canvas */}
+          <main className="relative flex-1 min-w-0 h-full">
+          {/* Phase 1 & 4: Floating Canvas Toolbar HUD with Undo/Redo */}
+          <FloatingCanvasToolbar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            selectedFilter={selectedFilter}
+            onSelectFilter={setSelectedFilter}
+            saveStatus={saveStatus}
+            onTidyLayout={handleTidyLayout}
+            onUndo={handleUndo}
+            canUndo={undoStack.length > 0}
+            onRedo={handleRedo}
+            canRedo={redoStack.length > 0}
+            nodeCounts={{
+              total: nodes.length,
+              papers: nodeCounts.papers,
+              syntheses: nodeCounts.syntheses,
+              gaps: nodeCounts.gaps,
+              experiments: nodeCounts.experiments,
+              notes: nodeCounts.notes,
+            }}
+            matchingResults={matchingSearchResults}
+            onFocusNode={handleFocusNode}
+          />
+
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={displayNodes}
+            edges={displayEdges}
             nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodesDelete={onNodesDelete}
             onConnect={onConnect}
             onPaneClick={onPaneClick}
+            onNodeClick={onNodeClick}
             onNodeContextMenu={onNodeContextMenu}
             onNodeDoubleClick={onNodeDoubleClick}
+            onNodeDragStart={onNodeDragStart}
             onNodeDragStop={onNodeDragStop}
             fitView
           >
             <Background
-              color="#27272a"
-              gap={20}
-              size={1}
+              color={theme === "light" ? "rgba(0, 0, 0, 0.35)" : "rgba(255, 255, 255, 0.25)"}
+              gap={22}
+              size={1.5}
               variant={BackgroundVariant.Dots}
             />
             <Controls className="!bg-zinc-900 !border-zinc-800 !text-white" />
+            {showMiniMap && (
+              <MiniMap
+                className="!bg-zinc-950/90 !border !border-zinc-800/80 !rounded-xl !shadow-2xl !overflow-hidden !m-3"
+                nodeColor={(n) => {
+                  const t = (n.type || "").toString();
+                  if (
+                    t === "paper" ||
+                    t === "uploadedPaper" ||
+                    t === "discovery"
+                  )
+                    return "#10b981";
+                  if (t === "synth" || t === "synthesisResult") return "#818cf8";
+                  if (t === "gap" || t === "researchGap") return "#f59e0b";
+                  if (
+                    t === "experiment" ||
+                    t === "codeExperiment" ||
+                    t === "result"
+                  )
+                    return "#06b6d4";
+                  return "#a855f7";
+                }}
+                maskColor={theme === "light" ? "rgba(241, 245, 249, 0.75)" : "rgba(9, 9, 11, 0.75)"}
+                position="bottom-right"
+              />
+            )}
           </ReactFlow>
+
+          {/* Empty Canvas Placeholder */}
+          {nodes.length === 0 && (
+            <CanvasEmptyState
+              onUploadPdf={() => fileInputRef.current?.click()}
+              onOpenDiscovery={() => selectDrawer("discovery")}
+              onAddNote={handleAddStandaloneNote}
+            />
+          )}
 
           {/* Floating Notification Pill */}
           {openDrawer !== "assistant" &&
@@ -1894,9 +2802,9 @@ function WorkspaceCanvas() {
           {menu && (
             <div
               style={{ top: menu.top, left: menu.left }}
-              className="fixed z-50 w-52 rounded-xl border border-zinc-800 bg-zinc-950 p-1.5 shadow-2xl text-xs space-y-1"
+              className="node-context-menu fixed z-50 w-52 rounded-xl border border-zinc-800 bg-zinc-950 p-1.5 shadow-2xl text-xs space-y-1 select-none [html[data-theme='light']_&]:bg-white [html[data-theme='light']_&]:border-slate-200 [html[data-theme='light']_&]:shadow-xl"
             >
-              <div className="px-2 py-1 text-[10px] font-semibold text-zinc-500 uppercase border-b border-zinc-800">
+              <div className="node-context-menu-header px-2 py-1 text-[10px] font-semibold text-zinc-500 uppercase border-b border-zinc-800 [html[data-theme='light']_&]:text-slate-500 [html[data-theme='light']_&]:border-slate-200 tracking-wider">
                 Actions
               </div>
 
@@ -1913,7 +2821,7 @@ function WorkspaceCanvas() {
                   }
                   setMenu(null);
                 }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-900 transition text-left cursor-pointer"
+                className="node-context-menu-item w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800/80 [html[data-theme='light']_&]:text-slate-800 [html[data-theme='light']_&]:hover:text-black [html[data-theme='light']_&]:hover:bg-slate-100 transition text-left cursor-pointer"
               >
                 <Edit3 className="w-3.5 h-3.5 text-cyan-400" /> Rename / Edit
                 Title
@@ -1924,7 +2832,7 @@ function WorkspaceCanvas() {
                   const targetNode = nodes.find((n) => n.id === menu.id);
                   if (targetNode) handleOpenChatForNode(targetNode);
                 }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-900 transition text-left cursor-pointer"
+                className="node-context-menu-item w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800/80 [html[data-theme='light']_&]:text-slate-800 [html[data-theme='light']_&]:hover:text-black [html[data-theme='light']_&]:hover:bg-slate-100 transition text-left cursor-pointer"
               >
                 <MessageSquare className="w-3.5 h-3.5 text-indigo-400" /> Ask
                 Agent About Paper
@@ -1941,7 +2849,7 @@ function WorkspaceCanvas() {
                       const targetNode = nodes.find((n) => n.id === menu.id);
                       if (targetNode) handleOpenExperimentModal(targetNode);
                     }}
-                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-cyan-300 hover:text-cyan-200 hover:bg-cyan-950/40 transition text-left cursor-pointer"
+                    className="node-context-menu-item item-experiment w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-cyan-300 hover:text-cyan-200 hover:bg-cyan-950/40 [html[data-theme='light']_&]:text-cyan-900 [html[data-theme='light']_&]:hover:text-cyan-950 [html[data-theme='light']_&]:hover:bg-cyan-50 transition text-left cursor-pointer"
                   >
                     <Cpu className="w-3.5 h-3.5 text-cyan-400" /> Run Code Experiment (Sandbox)
                   </button>
@@ -1949,7 +2857,7 @@ function WorkspaceCanvas() {
 
               <button
                 onClick={() => handleAddNoteToNode(menu.id)}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-900 transition text-left cursor-pointer"
+                className="node-context-menu-item w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-zinc-300 hover:text-white hover:bg-zinc-800/80 [html[data-theme='light']_&]:text-slate-800 [html[data-theme='light']_&]:hover:text-black [html[data-theme='light']_&]:hover:bg-slate-100 transition text-left cursor-pointer"
               >
                 <StickyNote className="w-3.5 h-3.5 text-amber-400" /> Attach
                 Sticky Note
@@ -1958,10 +2866,10 @@ function WorkspaceCanvas() {
               {menu.id.startsWith("synth") && (
                 <button
                   onClick={() => handleRunSynthesis(menu.id)}
-                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition text-left cursor-pointer ${
+                  className={`node-context-menu-item w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition text-left cursor-pointer ${
                     menu.nodeData?.taskMode === "gaps"
-                      ? "text-amber-300 hover:text-amber-200 hover:bg-amber-950/40"
-                      : "text-purple-300 hover:text-purple-200 hover:bg-purple-950/40"
+                      ? "item-gaps text-amber-300 hover:text-amber-200 hover:bg-amber-950/40 [html[data-theme='light']_&]:text-amber-950 [html[data-theme='light']_&]:hover:bg-amber-100"
+                      : "item-synth text-purple-300 hover:text-purple-200 hover:bg-purple-950/40 [html[data-theme='light']_&]:text-purple-950 [html[data-theme='light']_&]:hover:bg-purple-100"
                   }`}
                 >
                   {menu.nodeData?.taskMode === "gaps" ? (
@@ -1977,8 +2885,8 @@ function WorkspaceCanvas() {
               )}
 
               <button
-                onClick={() => handleDeleteNode(menu.id)}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 transition text-left cursor-pointer border-t border-zinc-800/80"
+                onClick={() => promptDeleteNode(menu.id)}
+                className="node-context-menu-item item-delete w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 [html[data-theme='light']_&]:text-rose-600 [html[data-theme='light']_&]:hover:text-rose-700 [html[data-theme='light']_&]:hover:bg-rose-50 [html[data-theme='light']_&]:border-slate-200 transition text-left cursor-pointer border-t border-zinc-800/80"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Delete Node
               </button>
@@ -2040,7 +2948,7 @@ function WorkspaceCanvas() {
             </button>
           </div>
 
-          <div className="flex-1 p-4 space-y-3 overflow-y-auto text-xs">
+          <div className="flex-1 p-4 space-y-3 overflow-y-auto text-readable">
             {chatMessages.length === 0 ? (
               <div className="text-center text-zinc-500 py-12 space-y-2">
                 <Bot className="w-8 h-8 text-indigo-400/60 mx-auto" />
@@ -2057,10 +2965,10 @@ function WorkspaceCanvas() {
               chatMessages.map((msg, i) => (
                 <div
                   key={i}
-                  className={`p-3 rounded-lg leading-relaxed ${
+                  className={`p-3.5 rounded-xl leading-relaxed text-readable ${
                     msg.sender === "user"
-                      ? "bg-indigo-950/60 border border-indigo-800/40 text-indigo-200 ml-4"
-                      : "bg-zinc-900 border border-zinc-800 text-zinc-300 mr-4"
+                      ? "bg-indigo-950/60 border border-indigo-800/40 text-indigo-200 ml-4 [html[data-theme='light']_&]:bg-indigo-50 [html[data-theme='light']_&]:text-indigo-950 [html[data-theme='light']_&]:border-indigo-200"
+                      : "bg-zinc-900 border border-zinc-800 text-zinc-300 mr-4 [html[data-theme='light']_&]:bg-slate-50 [html[data-theme='light']_&]:text-slate-900 [html[data-theme='light']_&]:border-slate-200"
                   }`}
                 >
                   {msg.sender === "agent" ? (
@@ -2075,14 +2983,34 @@ function WorkspaceCanvas() {
               ))
             )}
             {isAgentThinking && (
-              <div className="text-zinc-500 italic text-[11px] animate-pulse">
-                Searching paper chunks in background...
+              <div className="p-3.5 rounded-2xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 mr-4 shadow-lg space-y-2.5 animate-pulse [html[data-theme='light']_&]:bg-slate-50 [html[data-theme='light']_&]:text-slate-900 [html[data-theme='light']_&]:border-slate-200">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-lg bg-indigo-950 border border-indigo-700/60 flex items-center justify-center text-indigo-400 [html[data-theme='light']_&]:bg-indigo-100 [html[data-theme='light']_&]:text-indigo-900 [html[data-theme='light']_&]:border-indigo-300">
+                    <Bot className="w-3.5 h-3.5 animate-spin" />
+                  </div>
+                  <span className="text-xs font-semibold text-zinc-300 [html[data-theme='light']_&]:text-slate-900">
+                    Research Assistant is thinking...
+                  </span>
+                  <div className="flex items-center gap-1 ml-auto">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 [html[data-theme='light']_&]:bg-indigo-600 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 [html[data-theme='light']_&]:bg-indigo-600 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 [html[data-theme='light']_&]:bg-indigo-600 animate-bounce" />
+                  </div>
+                </div>
+                <div className="space-y-1.5 pt-1">
+                  <div className="h-2 bg-zinc-800/90 [html[data-theme='light']_&]:bg-slate-200 rounded w-full" />
+                  <div className="h-2 bg-zinc-800/70 [html[data-theme='light']_&]:bg-slate-200/80 rounded w-5/6" />
+                  <div className="h-2 bg-zinc-800/40 [html[data-theme='light']_&]:bg-slate-200/60 rounded w-3/5" />
+                </div>
+                <div className="text-[10px] text-zinc-500 [html[data-theme='light']_&]:text-slate-600 font-mono">
+                  Querying vector database chunks & cross-referencing citations...
+                </div>
               </div>
             )}
           </div>
 
           {/* Chat Input */}
-          <div className="p-3 border-t border-zinc-800 bg-zinc-900/50">
+          <div className="p-3 border-t border-zinc-800 [html[data-theme='light']_&]:border-slate-200 bg-zinc-900/50 [html[data-theme='light']_&]:bg-slate-50">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -2099,7 +3027,7 @@ function WorkspaceCanvas() {
                 }
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500"
+                className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 [html[data-theme='light']_&]:bg-white [html[data-theme='light']_&]:text-slate-900 [html[data-theme='light']_&]:border-slate-300 focus:outline-none focus:border-indigo-500"
               />
               <button
                 type="submit"
@@ -2112,19 +3040,167 @@ function WorkspaceCanvas() {
             </form>
           </div>
         </aside>
+
+        {/* Slide-Out Node Details Inspector Panel */}
+        <NodeDetailsInspector
+          isOpen={openDrawer === "inspector"}
+          onClose={() => selectDrawer("none")}
+          node={selectedInspectorNode}
+          allNodes={nodes}
+          edges={edges}
+          onAskAssistant={(node) => {
+            const paperData = (node.data as Record<string, unknown>) || {};
+            setActivePaper({
+              id: (paperData.paper_id as string) || node.id,
+              title: String(paperData.title || paperData.label || node.id),
+              abstract: String(paperData.abstract || paperData.summary || ""),
+              context: buildNodeFallbackContext(node),
+            });
+            selectDrawer("assistant");
+          }}
+          onRunBenchmark={(node) => {
+            const paperData = (node.data as Record<string, unknown>) || {};
+            setExperimentTargetNode({
+              id: node.id,
+              title: String(paperData.title || paperData.label || node.id),
+              paper_id: String(paperData.paper_id || node.id),
+              abstract: String(paperData.abstract || ""),
+              summary: String(paperData.summary || ""),
+            });
+            setIsExperimentModalOpen(true);
+          }}
+          onFocusNode={handleFocusNode}
+          onDeleteNode={promptDeleteNode}
+          onEditTitle={(node) => {
+            const currentTitle = getEditableNodeTitle(node);
+            setEditingNode({ id: node.id, currentTitle });
+            setNewTitleInput(currentTitle);
+          }}
+        />
+        </div>
+
+        {/* View 2: Home Dashboard */}
+        {currentView === "home" && (
+          <div className="flex-1 min-w-0 h-full overflow-y-auto bg-zinc-950 no-scrollbar">
+            <HomeDashboard
+              activeProject={activeProject}
+              projects={projects}
+              nodes={nodes}
+              onResumeGraph={() => setCurrentView("graph")}
+              onSwitchProject={handleSwitchProject}
+              onOpenWorkspaceGraph={(projectId) => {
+                handleSwitchProject(projectId);
+                setCurrentView("graph");
+              }}
+              onOpenNewProjectModal={() => setIsNewProjectModalOpen(true)}
+              onUploadPdf={() => fileInputRef.current?.click()}
+              onOpenDiscovery={() => {
+                setCurrentView("graph");
+                selectDrawer("discovery");
+              }}
+              onAddNote={handleAddStandaloneNote}
+              onOpenExport={() => setIsExportModalOpen(true)}
+              onFocusNode={(nodeId) => {
+                setCurrentView("graph");
+                handleFocusNode(nodeId);
+              }}
+            />
+          </div>
+        )}
+
+        {/* View 3: Research Library */}
+        {currentView === "library" && (
+          <div className="flex-1 min-w-0 h-full overflow-y-auto bg-zinc-950 no-scrollbar">
+            <ResearchLibrary
+              nodes={nodes}
+              onShowInGraph={(nodeId) => {
+                setCurrentView("graph");
+                handleFocusNode(nodeId);
+              }}
+              onAskAssistant={(node) => {
+                setCurrentView("graph");
+                const paperData = (node.data as Record<string, unknown>) || {};
+                setActivePaper({
+                  id: (paperData.paper_id as string) || node.id,
+                  title: String(paperData.title || paperData.label || node.id),
+                  abstract: String(paperData.abstract || paperData.summary || ""),
+                  context: buildNodeFallbackContext(node),
+                });
+                selectDrawer("assistant");
+              }}
+              onRunBenchmark={(node) => {
+                const paperData = (node.data as Record<string, unknown>) || {};
+                setExperimentTargetNode({
+                  id: node.id,
+                  title: String(paperData.title || paperData.label || node.id),
+                  paper_id: String(paperData.paper_id || node.id),
+                  abstract: String(paperData.abstract || ""),
+                  summary: String(paperData.summary || ""),
+                });
+                setIsExperimentModalOpen(true);
+              }}
+              onUploadPdf={() => fileInputRef.current?.click()}
+              onOpenDiscovery={() => {
+                setCurrentView("graph");
+                selectDrawer("discovery");
+              }}
+            />
+          </div>
+        )}
+
+        {/* View 4 & 5: Experiments Lab & AI Agent Activity Studio */}
+        {(currentView === "experiments" || currentView === "agents") && (
+          <div className="flex-1 min-w-0 h-full overflow-y-auto bg-zinc-950 no-scrollbar">
+            <ExperimentsStudio
+              nodes={nodes}
+              activeTab={currentView === "agents" ? "agents" : "experiments"}
+              onTabChange={(tab) => setCurrentView(tab)}
+              isAgentThinking={isAgentThinking}
+              onShowInGraph={(nodeId) => {
+                setCurrentView("graph");
+                handleFocusNode(nodeId);
+              }}
+              onAskAgentAboutExperiment={(promptText, paperInfo) => {
+                setCurrentView("graph");
+                handleAskAgentAboutExperiment(promptText, paperInfo);
+              }}
+              onOpenNewExperiment={() => {
+                const firstPaper = nodes.find(
+                  (n) =>
+                    n.type === "uploadedPaper" ||
+                    n.type === "discovery" ||
+                    n.id.startsWith("paper") ||
+                    n.id.startsWith("discovery")
+                );
+                if (firstPaper) {
+                  const data = (firstPaper.data as Record<string, unknown>) || {};
+                  setExperimentTargetNode({
+                    id: firstPaper.id,
+                    title: String(data.title || data.label || firstPaper.id),
+                    paper_id: String(data.paper_id || firstPaper.id),
+                    abstract: String(data.abstract || ""),
+                    summary: String(data.summary || ""),
+                  });
+                }
+                setIsExperimentModalOpen(true);
+              }}
+            />
+          </div>
+        )}
+      </div>
       </div>
 
       {/* Edit Title Modal */}
       {editingNode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-              <span className="text-xs font-semibold text-zinc-200 flex items-center gap-2">
-                <Edit3 className="w-3.5 h-3.5 text-cyan-400" /> Edit Title
+          <div className="w-full max-w-sm rounded-2xl glass-panel-mono p-5 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <span className="text-xs font-semibold text-current flex items-center gap-2">
+                <Edit3 className="w-3.5 h-3.5" /> Edit Title
               </span>
               <button
                 onClick={() => setEditingNode(null)}
-                className="text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                className="text-zinc-400 hover:text-current cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2139,7 +3215,7 @@ function WorkspaceCanvas() {
                 value={newTitleInput}
                 onChange={(e) => setNewTitleInput(e.target.value)}
                 placeholder="Type here..."
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-2.5 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500 resize-none"
+                className="w-full bg-white/[0.04] dark:bg-white/[0.04] border border-white/10 dark:border-white/10 rounded-lg p-2.5 text-xs text-current focus:outline-none focus:border-white/40 resize-none"
                 autoFocus
               />
             </div>
@@ -2147,13 +3223,13 @@ function WorkspaceCanvas() {
             <div className="mt-4 flex justify-end gap-2">
               <button
                 onClick={() => setEditingNode(null)}
-                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 cursor-pointer"
+                className="btn-glass-mono px-3 py-1.5 rounded-lg text-xs cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveNodeTitle}
-                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white cursor-pointer"
+                className="btn-primary-mono px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
               >
                 Save Changes
               </button>
@@ -2165,15 +3241,15 @@ function WorkspaceCanvas() {
       {/* New Project Modal */}
       {isNewProjectModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-zinc-950 border border-zinc-800 p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-              <div className="flex items-center gap-2 text-indigo-400">
+          <div className="w-full max-w-md rounded-2xl glass-panel-mono p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2 text-current">
                 <Folder className="w-5 h-5" />
-                <h3 className="font-semibold text-base text-zinc-100">Create Research Workspace</h3>
+                <h3 className="font-semibold text-base text-current">Create Research Workspace</h3>
               </div>
               <button
                 onClick={() => setIsNewProjectModalOpen(false)}
-                className="text-zinc-500 hover:text-zinc-300 p-1 rounded-lg transition"
+                className="text-zinc-400 hover:text-current p-1 rounded-lg transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2183,7 +3259,7 @@ function WorkspaceCanvas() {
             </p>
             <div className="mt-4 space-y-3">
               <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">Project Name</label>
+                <label className="block text-xs font-medium text-current mb-1">Project Name</label>
                 <input
                   type="text"
                   placeholder="e.g. Attention Models & Transformer Architecture"
@@ -2191,32 +3267,32 @@ function WorkspaceCanvas() {
                   onChange={(e) => setNewProjectName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleCreateProject()}
                   autoFocus
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 focus:border-indigo-500 focus:outline-none text-xs text-zinc-200 placeholder:text-zinc-600"
+                  className="w-full px-3 py-2 rounded-lg bg-white/[0.04] dark:bg-white/[0.04] border border-white/10 dark:border-white/10 focus:border-white/40 focus:outline-none text-xs text-current placeholder:text-zinc-500"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">Description (Optional)</label>
+                <label className="block text-xs font-medium text-current mb-1">Description (Optional)</label>
                 <input
                   type="text"
                   placeholder="e.g. Comparative literature review for Chapter 2"
                   value={newProjectDesc}
                   onChange={(e) => setNewProjectDesc(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleCreateProject()}
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 focus:border-indigo-500 focus:outline-none text-xs text-zinc-200 placeholder:text-zinc-600"
+                  className="w-full px-3 py-2 rounded-lg bg-white/[0.04] dark:bg-white/[0.04] border border-white/10 dark:border-white/10 focus:border-white/40 focus:outline-none text-xs text-current placeholder:text-zinc-500"
                 />
               </div>
             </div>
             <div className="mt-6 flex items-center justify-end gap-2.5">
               <button
                 onClick={() => setIsNewProjectModalOpen(false)}
-                className="px-3.5 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition"
+                className="btn-glass-mono px-3.5 py-2 rounded-lg text-xs font-medium transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreateProject}
                 disabled={!newProjectName.trim()}
-                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium text-white transition shadow-sm"
+                className="btn-primary-mono px-4 py-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold transition shadow-sm cursor-pointer"
               >
                 Create Workspace
               </button>
@@ -2244,8 +3320,7 @@ function WorkspaceCanvas() {
         nodes={nodes}
         backendUrl={BACKEND_URL}
         onExportSuccess={(msg) => {
-          setExportFeedback(msg);
-          setTimeout(() => setExportFeedback(null), 3500);
+          showToast(msg, "success", "Export Complete");
         }}
       />
 
@@ -2258,13 +3333,38 @@ function WorkspaceCanvas() {
         backendUrl={BACKEND_URL}
       />
 
-      {/* Export Notification Toast */}
-      {exportFeedback && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl bg-emerald-950/95 border border-emerald-600/70 text-emerald-200 text-xs shadow-2xl animate-in fade-in slide-in-from-bottom-3 duration-200 backdrop-blur-md">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span className="font-medium">{exportFeedback}</span>
-        </div>
-      )}
+      {/* Safety Confirmation Dialog Modal */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmLabel={confirmModal.confirmLabel}
+        cancelLabel={confirmModal.cancelLabel}
+        isDestructive={confirmModal.isDestructive}
+        onConfirm={confirmModal.onConfirm}
+      />
+
+      {/* Studio Settings & Vector Memory Modal */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        initialTab={settingsModalTab}
+        showMiniMap={showMiniMap}
+        onToggleMiniMap={handleToggleMiniMap}
+        animatedEdges={animatedEdges}
+        onToggleAnimatedEdges={handleToggleAnimatedEdges}
+        compactNodes={compactNodes}
+        onToggleCompactNodes={handleToggleCompactNodes}
+        nodes={nodes}
+        edges={edges}
+        projects={projects}
+        activeProjectId={activeProjectId}
+        activeProjectName={activeProject.name}
+      />
+
+      {/* Universal Notification Toasts Container (top-20 right-6) */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
