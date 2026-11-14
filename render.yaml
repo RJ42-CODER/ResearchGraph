@@ -1,34 +1,48 @@
+
 services:
   - type: web
     name: researchgraph-backend
-    env: python
+    runtime: python
+    plan: free
+    region: singapore
+
+    # Backend is inside the backend/ directory
+    rootDir: backend
+
+    # Build and start commands
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+    # Automatically deploy commits pushed to main
+    autoDeployTrigger: commit
+
+    # Academic API configuration
     envVars:
-      # Core configuration – adjust per deployment
-      APP_ENV: production
-      OLLAMA_BASE_URL: ""                 # empty → Ollama disabled on Render
-      OLLAMA_CHAT_MODEL: llama3.2:3b
-      OLLAMA_EMBEDDING_MODEL: nomic-embed-text
-      OLLAMA_NUM_THREADS: "4"
-      OLLAMA_KEEP_ALIVE: "300"
-      # Academic API keys (optional, **do not** commit real keys)
-      OPENALEX_API_KEY: ""
-      CROSSREF_MAILTO: ""
-      UNPAYWALL_EMAIL: ""
-      # CORS – add your Vercel domain(s) here, comma‑separated
-      CORS_ORIGINS: "https://<your‑project>.vercel.app"
-      # Sandbox execution guard – keep disabled in prod
-      ENABLE_SANDBOX_EXECUTION: "false"
-      # Upload / PDF limits
-      MAX_UPLOAD_MB: "50"
-      # Persistent storage (Render free tier provides an *ephemeral* /tmp volume)
-      RESEARCHGRAPH_DATA_DIR: "/data"
-    autoDeploy: true
-    healthCheckPath: /health
-    # Render free tier note – storage not persisted across restarts
-    disk:
-      mountPath: /data
-      sizeGB: 1
-    # Optional: indicate you are using a free plan
-    plan: free
+      - key: OPENALEX_API_URL
+        value: https://api.openalex.org
+
+      - key: OPENALEX_API_KEY
+        sync: false
+
+      - key: CROSSREF_API_URL
+        value: https://api.crossref.org
+
+      - key: CROSSREF_MAILTO
+        sync: false
+
+      - key: UNPAYWALL_API_URL
+        value: https://api.unpaywall.org
+
+      - key: UNPAYWALL_EMAIL
+        sync: false
+
+      # Local model configuration defaults
+      # These do not provide an Ollama server on Render
+      - key: OLLAMA_MODEL
+        value: llama3.2:3b
+
+      - key: OLLAMA_KEEP_ALIVE
+        value: 1h
+
+      - key: OLLAMA_NUM_THREADS
+        value: "4"
